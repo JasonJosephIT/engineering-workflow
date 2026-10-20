@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+.engineering-workflow-state/
+.workflow-backups/
+.DS_Store
