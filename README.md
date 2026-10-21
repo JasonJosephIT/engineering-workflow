@@ -142,6 +142,8 @@ Feedback contains `text`, `attribution` (`human` or `agent_interpretation`) and
 `classification` (`feedback`, `local_clarification` or
 `shared_standard_proposal`), with optional `standard_proposal`. Proposals stay
 private and unadopted until human adoption through Git in the standards source.
+See [the shared review contract](core/REVIEW_CONTRACT.md) for JSON examples,
+historical feedback references and idempotent delivery behavior.
 
 Canonical narratives and feedback live in the Daydreamer private bundle; the CLI
 queues them in a private outbox outside the project. Project/review commands accept

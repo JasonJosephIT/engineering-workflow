@@ -75,6 +75,12 @@ class ReviewFlowTests(unittest.TestCase):
         self.assertEqual(shown['revision'], 2)
         self.assertFalse(list(self.project.rglob('review.json')))
 
+    def test_author_platform_must_be_explicit(self):
+        self.config()
+        result = self.cli('review', 'upsert', '--implementation', 'book-lookup', '--file',
+                         str(self.draft()), '--base-revision', '0', ok=False)
+        self.assertIn('Confirm the authoring platform', result.stderr)
+
     def test_sync_is_idempotent_and_concurrent_conflict_preserves_both(self):
         self.config()
         first = self.upsert(self.draft())

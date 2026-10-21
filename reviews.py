@@ -423,12 +423,13 @@ def add_parser(sub):
     r.add_argument('action', choices=('upsert', 'show', 'feedback', 'sync'))
     r.add_argument('--project', default='.'); r.add_argument('--state-dir'); r.add_argument('--bundle')
     r.add_argument('--implementation'); r.add_argument('--file'); r.add_argument('--base-revision', type=int)
-    r.add_argument('--platform', choices=PLATFORMS, default='codex')
+    r.add_argument('--platform', choices=PLATFORMS)
 
 
 def run(args):
     if args.command == 'review':
         if args.action in ('upsert', 'feedback') and not args.file: raise ValueError('--file is required')
         if args.action != 'sync' and not args.implementation: raise ValueError('--implementation is required')
+        if args.action == 'upsert' and args.platform is None: raise ValueError('Confirm the authoring platform with --platform')
         return {'upsert': upsert, 'show': show, 'feedback': feedback, 'sync': synchronize}[args.action](args)
     return configure(args) if args.action == 'configure' else project_summary(args)

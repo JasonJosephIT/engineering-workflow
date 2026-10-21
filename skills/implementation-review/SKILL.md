@@ -8,6 +8,7 @@ description: Present a concise human implementation review at meaningful checkpo
 Read the selected runtime's `core/WORKFLOW.md`. Preserve its mandatory tests,
 independent review and bounded review budgets. This is an evidence summary for
 the human, not a new reviewer or an approval step.
+Use `core/REVIEW_CONTRACT.md` in that runtime for the JSON input and feedback fields.
 
 1. Read `workflow.py project status --project .`. Use the recorded project UUID,
    audience/goals, stable implementation key and pinned external standards source.

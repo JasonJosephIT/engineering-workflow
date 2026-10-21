@@ -31,7 +31,8 @@ Local tickets must be committed to survive cloud sessions; GitHub issues are an
 alternative when authorized. Do not publish issues without that authorization.
 
 During explicitly invoked grilling, discover project audience, goals and
-`public_facing` status (`unknown`, `yes` or `no`). Address all eight sections of
+`public_facing` status (`unknown`, `yes` or `no`). For public-facing projects,
+address all eight sections of
 Open Thoughts' versioned portfolio contract: load the configured source rather
 than copying or redefining it here. Record sourced answers, open questions and
 reasoned non-applicability; never silently mark a section passed. The source
