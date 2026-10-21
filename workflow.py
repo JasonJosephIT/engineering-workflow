@@ -58,7 +58,7 @@ def git(*args, cwd=None):
 
 
 def package_paths(root=ROOT):
-    for name in ("workflow.py", "VERSION", "README.md", "SOURCES.md", "LICENSE"):
+    for name in ("workflow.py", "reviews.py", "VERSION", "README.md", "SOURCES.md", "LICENSE"):
         yield root / name
     for name in ("core", "adapters", "skills", "vendor"):
         for p in sorted((root / name).rglob("*")):
@@ -394,6 +394,11 @@ def session(project, platform, expected=None, check_upstream=False):
               "selection": "project pin" if runtime == find_project(project) / ".engineering-workflow" else "user/package default",
               "hooks": "configuration is not live enforcement evidence; confirm in this platform",
               "docs": docs(project), "skill_count": len(lock["skills"])}
+    import reviews
+    if (find_project(project) / reviews.PROJECT_FILE).is_file():
+        configuration = reviews.read_project(project)
+        result["project"] = {"id": configuration["project_id"], "public_facing": configuration["public_facing"],
+                             "discovery": reviews.discovery_status(configuration)}
     if check_upstream:
         remote = git("ls-remote", REPOSITORY, "refs/tags/" + lock["release"], cwd=runtime)
         if not remote:
@@ -527,8 +532,10 @@ def hook(platform, data):
 
 
 def main():
+    import reviews
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest="command", required=True)
+    reviews.add_parser(sub)
     sub.add_parser("freeze", help="Maintainer: regenerate release checksums")
     v = sub.add_parser("verify"); v.add_argument("--expected")
     i = sub.add_parser("install")
@@ -551,7 +558,7 @@ def main():
     a = p.parse_args()
     try:
         raw_hook = None
-        if a.command in ("session", "doctor", "docs", "goal", "hook"):
+        if a.command in ("session", "doctor", "docs", "goal", "hook", "project", "review"):
             if a.command == "hook":
                 raw_hook = sys.stdin.read()
                 data = json.loads(raw_hook)
@@ -569,6 +576,7 @@ def main():
                 return subprocess.run([sys.executable, "-B", str(selected / "workflow.py"),
                                        *sys.argv[1:]], input=raw_hook, text=True).returncode
         if a.command == "freeze": freeze()
+        elif a.command in ("project", "review"): print(json.dumps(reviews.run(a), indent=2))
         elif a.command == "verify": print("Verified workflow", verify(expected=a.expected)["version"])
         elif a.command == "install": install(a)
         elif a.command in ("session", "doctor"): print(json.dumps(session(a.project, a.platform, a.expected, a.check_upstream), indent=2))

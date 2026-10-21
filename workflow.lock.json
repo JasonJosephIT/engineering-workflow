@@ -21,17 +21,20 @@
   },
   "files": {
     "LICENSE": "1ff535e3e56012b4b3af3a3418968032d4da65977fe302952019e33c5304a7cd",
-    "README.md": "a8c5e53b5728fa969203f7f2e8849fa9d16d6fadc5289f62363b68c6b297e0a2",
-    "SOURCES.md": "c5125cd97893619fe19c6aaacf9af27cbdc271a95d17e638e10664b34cc2721b",
-    "VERSION": "e9dd8507f4bf0c6f42458e41aea833ad0bd3f6127272335eee9bf4d58541ed67",
-    "adapters/claude.md": "ba3e839e1f431b396257d6f21b494239b3584a17c2200b70b4842d32a315dbb5",
-    "adapters/codex.md": "efbfc869e7b94014af8d6096449356f5a46cf84804e33b283c3b659c6b562f93",
-    "adapters/gemini.md": "b9e0b6b621acb0614d1ec1bf895b8c2a0f64d2be8d7c6f3fad8ab91e43b8799f",
-    "core/WORKFLOW.md": "ea37f65e76793c19913667193a7f75864efffee40f6557426677bc6c31e1541d",
+    "README.md": "44f348d15b985ba3074d203eafe47aa3c3b483c394687fe4c1726ae01e0df1e2",
+    "SOURCES.md": "45879a2ec4b0e3386d5723ef48fa1ec5771ecafa093dda4b0381a7c66376ca8e",
+    "VERSION": "1f930dd1f133c1f97a94fe3acb8db34372cf4c01ffdb2b3ff4ca72f9494121e9",
+    "adapters/claude.md": "77d0758eeceebb1992391c0de26d0550244c0cb3f3b1f587f3e94354197c4c90",
+    "adapters/codex.md": "87b2d59b19c608e7aa4aa2de93716e42a0a4892dc5c0255b234b6850b6620c13",
+    "adapters/gemini.md": "151cd43297b5c1ff784e2975fc96ba516d68439171191607dea83941b4349b92",
+    "core/REVIEW_CONTRACT.md": "298ba415ea78f5d8e9ce0ee3e4ce26b2f17cddc1e6f07b6d2d5384e22e2cec47",
+    "core/WORKFLOW.md": "5779f9099e7f9a76f5a49b6587aa238069b53c9171a9ab10874d32eaad5dea72",
+    "reviews.py": "9265e753d0cc591fef17c77229e093aa4c5ee26c2b18e472b9da7d370642cae7",
     "skills/autopilot/SKILL.md": "48e03cfbaa4d01fa058f7f21db12ccf239ddaad3b1ed1c04b45b4808320da8cb",
     "skills/deploy-checklist/SKILL.md": "ec7a1df34b92b25c0df89e2d0f16b9f87d36c342a6488612d5ebb4156c00a13d",
     "skills/docs-health/SKILL.md": "8b5174f9c7eb096b374fccda48fff5d4d12efd958d333ed41c03b7548fc283db",
     "skills/finishing-a-development-branch/SKILL.md": "8a672ffbf34feaabeb414c19fd705ed36f3310187e1605a3f9e45eacd150d5be",
+    "skills/implementation-review/SKILL.md": "61fcf765a45febe7352e5539fa74784b2f043a07bc3727bca975012352bd4016",
     "skills/incident-response/SKILL.md": "e78583fd64ce4559a04c5a178867ff2d34807519f7d37149d37302d095856d78",
     "skills/ponytail-audit/SKILL.md": "5ebbad8090762ea045c6160cc0156fe8d12c341f8d59c20221ff014283116fec",
     "skills/ponytail-debt/SKILL.md": "e47afef496df951934dc4b6760e0dcceb97f4e162c80050d936885c8ab499881",
@@ -142,10 +145,10 @@
     "vendor/mattpocock/skills/productivity/writing-for-agents/SKILL-MECHANICS.md": "c768e6307c7c10728c401c213f2c4ba71c542127eeb7ad2956aabd15a0fa0059",
     "vendor/mattpocock/skills/productivity/writing-for-agents/SKILL.md": "7e3a8a88fc251fae5224405967fc7731313c2767c732cdf77c78a4855a682580",
     "vendor/mattpocock/skills/productivity/writing-for-agents/agents/openai.yaml": "eacb24b2a618cfb81dacb0416f4fdd75ddf3a8060f8ddb99aae1b1e301907e4b",
-    "workflow.py": "ce664afa1ab4ec0133da18f5970ca354b0be449277d5679d4ca7581c5753f578"
+    "workflow.py": "75b90b9a6bd035a66da9a7668d2cb568195c549def2c0f9dc2baf914f614e139"
   },
   "name": "engineering-workflow",
-  "release": "v0.1.0",
+  "release": "v0.2.0",
   "repository": "https://github.com/JasonJosephIT/engineering-workflow.git",
   "schema": 1,
   "skills": {
@@ -153,6 +156,7 @@
     "ew-deploy-checklist": "skills/deploy-checklist",
     "ew-docs-health": "skills/docs-health",
     "ew-finishing-a-development-branch": "skills/finishing-a-development-branch",
+    "ew-implementation-review": "skills/implementation-review",
     "ew-incident-response": "skills/incident-response",
     "ew-matt-ask-matt": "vendor/mattpocock/skills/engineering/ask-matt",
     "ew-matt-code-review": "vendor/mattpocock/skills/engineering/code-review",
@@ -189,5 +193,5 @@
     "ew-subagent-driven-development": "skills/subagent-driven-development",
     "ew-verification-before-completion": "skills/verification-before-completion"
   },
-  "version": "0.1.0"
+  "version": "0.2.0"
 }

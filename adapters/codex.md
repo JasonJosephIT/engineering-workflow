@@ -15,6 +15,16 @@ Cloud orchestration may not support local command hooks even with local tools.
 Use explicit session checks, guard checks, and verification when hooks are absent;
 report Guard as advisory rather than enforced and continuation as manual.
 
+Use ew-implementation-review at implementation checkpoints: show the short human
+review in chat and queue it with `review upsert --platform codex`. Full Codex
+transcripts are deferred; preserve available session references without claiming
+complete capture. Local `review sync` writes the private Daydreamer bundle; cloud
+outboxes require explicit local import and existing private Git transport remains
+external. There is no public API for private writes. Hook reminders cannot infer
+completion or start paid calls. Project `public_facing` describes the audience
+independently of publication visibility. None of these mappings establishes live
+platform parity; report actual session evidence and missing capabilities.
+
 Sources checked 2026-10-20:
 - https://learn.chatgpt.com/docs/agent-configuration/agents-md
 - https://learn.chatgpt.com/docs/build-skills

@@ -13,3 +13,10 @@ matched secret text; Stop provides bounded continuation for a user-set active go
 Do not additionally enable the original Guard/Headroom/autopilot/docs-health plugins
 for the same functions. The portable docs-health and autopilot skills replace the
 Claude TSX modules; their special status panes/buttons are not reproduced.
+
+At implementation checkpoints, use ew-implementation-review to show the short
+human review in chat and queue it with the producer CLI using `--platform claude`.
+Keep the existing capture path once; private narratives/feedback sync only to the
+local Daydreamer bundle. Existing private Git transport stays external. Hook
+reminders cannot establish completion, approval or a reason to start paid calls.
+Project `public_facing` status is independent of publication visibility.
