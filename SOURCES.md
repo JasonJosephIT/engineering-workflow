@@ -13,6 +13,8 @@ history, or private project content is included.
 | Deploy / incident support | Personal copies of engineering plugin skills | vendored 2026-10-14; individual revision unavailable |
 | Autopilot / docs-health | New stdlib implementation of requested behavior | package version; no dependency on Claude TSX runtime |
 | Headroom | https://github.com/headroomlabs-ai/headroom | external optional runtime; not vendored or auto-updated |
+| Implementation review | Original workflow integration | v0.2.0 producer guidance; private Daydreamer bundle and outbox |
+| Portfolio discovery standard | Open Thoughts `standards/portfolio-enrichment.json` and `docs/adr/ADR-002-eight-section-enrichment.md` | external versioned contract 1.0.0; source/version/hash pinned per project, not vendored |
 
 Upstream source SHA is provenance, not an assertion that adapted files still have
 the upstream checksum. workflow.lock.json records the actual distributed hashes.
@@ -27,6 +29,14 @@ naming, native merge-conflict handling, platform-aware models, and the newer
 bounded agent budget. Its helper scratch directory is .engineering-workflow-state.
 The shared core settles conflicting historical prose; it takes precedence within
 this package, subordinate to user and platform instructions.
+
+Implementation-review guidance preserves the existing test and reviewer budgets.
+It consumes the external eight-section standard without redefining it: explicit
+grilling addresses every section, individual reviews discuss relevant sections.
+Human review, completeness and publication approval remain distinct, as required
+by ADR-002. Private feedback may propose a standard change; only human adoption
+in the source Git repository makes it shared guidance. No private source content
+or machine-specific path is bundled here.
 
 Guard's Python source is included with MIT attribution. The adapter translates
 tool/event protocols and redacts decision output; it never prints command text or

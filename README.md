@@ -1,6 +1,6 @@
 # Engineering workflow
 
-One versioned process for Claude Code, Codex and Gemini CLI. Version **0.1.0**.
+One versioned process for Claude Code, Codex and Gemini CLI. Version **0.2.0**.
 Matt Pocock planning/TDD/review + personal SDD + Ponytail, with Claude Guard,
 portable Autopilot and docs-health. Optional Headroom startup support. No Runpod,
 entertainment, or required TypeSafe dependency.
@@ -11,9 +11,9 @@ Requires Git, Python **3.11+**, and access to this private repository. Clone a
 release, verify it, explicitly select the platform, then install:
 
 ```sh
-git clone --branch v0.1.0 https://github.com/JasonJosephIT/engineering-workflow.git
+git clone --branch v0.2.0 https://github.com/JasonJosephIT/engineering-workflow.git
 cd engineering-workflow
-python3 -B workflow.py verify --expected 0.1.0
+python3 -B workflow.py verify --expected 0.2.0
 python3 -B workflow.py install --scope user --platform codex --dry-run
 python3 -B workflow.py install --scope user --platform codex
 ```
@@ -84,6 +84,75 @@ GitHub authentication and compare the expected release commit when bootstrapping
 An upgrade is explicit: inspect a new release, check out its tag in this package
 repository and rerun install. No startup pull or silent upstream skill updates.
 User defaults may advance while projects retain their committed older pins.
+
+## Project discovery and implementation reviews
+
+Configure project identity independently of the installed runtime. During explicit
+grilling, address all eight sections of Open Thoughts' portfolio standard 1.0.0;
+record evidence, open questions and reasoned non-applicability. Load the external
+source contract and ADR-002; this package does not carry a replacement standard.
+A missing source leaves discovery incomplete.
+
+The discovery JSON is keyed by each canonical section key. Each entry contains
+`implications`, `evidence` and `tradeoffs` strings, or a `not_applicable_reason`
+string. These entries mean the section was addressed, not factually verified.
+Select the source explicitly with `--standards-source`; the producer does not
+fetch a remote standard, and an unavailable source remains pending.
+
+```sh
+python3 ~/.engineering-workflow/workflow.py project configure --project . \
+  --public-facing unknown --audience "Project maintainers" \
+  --goal "Make implementation decisions reviewable" \
+  --standards-source /path/to/Open-Thoughts/standards/portfolio-enrichment.json \
+  --discovery /path/to/discovery.json
+python3 ~/.engineering-workflow/workflow.py project status --project .
+```
+
+Repeat `--goal` for additional goals; `--public-facing` accepts `true`, `false` or
+`unknown`. `.engineering-workflow-project.json` records the project UUID,
+audience/goals, public-facing status, standards source/version/hash, discovery
+entries and stable implementation key to UUID mappings. Reinstallation preserves
+this file. Public-facing describes project audience independently of publication
+visibility; it grants no publishing permission. Review configured metadata before
+committing it, especially source locations and discovery content.
+
+At a meaningful checkpoint or handoff, use `ew-implementation-review` to present
+a short human review in chat and queue it for Open Thoughts. Review only relevant
+standard sections and state gaps. Existing mandatory tests and review budgets
+remain; this narrative summarizes evidence and never substitutes for approval.
+
+```sh
+python3 ~/.engineering-workflow/workflow.py review upsert --project . \
+  --implementation private-review-producer --file /path/to/review.json \
+  --base-revision 0 --platform codex
+python3 ~/.engineering-workflow/workflow.py review show --project . \
+  --implementation private-review-producer
+python3 ~/.engineering-workflow/workflow.py review feedback --project . \
+  --implementation private-review-producer --file /path/to/feedback.json
+python3 ~/.engineering-workflow/workflow.py review sync --project . \
+  --bundle /path/to/private/daydream
+```
+
+A review file contains `title`, `status` (`checkpoint` or `complete`), `sections`
+with `outcome`, `purpose_decisions`, `evidence_limits`, `standards_implications`
+and `your_attention`, and `references` with `implementation` strings and
+`sessions` entries containing `platform` and `id`. Use the current revision for
+updates; zero means a new record. Read and reconcile a revision conflict.
+Feedback contains `text`, `attribution` (`human` or `agent_interpretation`) and
+`classification` (`feedback`, `local_clarification` or
+`shared_standard_proposal`), with optional `standard_proposal`. Proposals stay
+private and unadopted until human adoption through Git in the standards source.
+
+Canonical narratives and feedback live in the Daydreamer private bundle; the CLI
+queues them in a private outbox outside the project. Project/review commands accept
+`--state-dir` for an explicit private state location. Sync writes to the local
+bundle selected by `--bundle`, `DAYDREAMER_BUNDLE`, or the existing home-relative
+`Projects/Open Thoughts/daydream` convention. The bundle must already be a private
+Git bundle; sync does not push. Existing Daydreamer capture/push handles private Git
+transport externally. Cloud outboxes require explicit import into the local
+private workflow. There is no public API for private writes. Existing capture is
+preserved once; full Codex/Gemini transcripts are deferred. Hooks may report a
+missing checkpoint; they never infer completion or initiate paid calls.
 
 ## Goals and docs-health
 

@@ -30,6 +30,21 @@ Configure the issue tracker using setup-matt-pocock-skills once per project.
 Local tickets must be committed to survive cloud sessions; GitHub issues are an
 alternative when authorized. Do not publish issues without that authorization.
 
+During explicitly invoked grilling, discover project audience, goals and
+`public_facing` status (`unknown`, `yes` or `no`). Address all eight sections of
+Open Thoughts' versioned portfolio contract: load the configured source rather
+than copying or redefining it here. Record sourced answers, open questions and
+reasoned non-applicability; never silently mark a section passed. The source
+contract and ADR-002 distinguish completeness from factual review and approval.
+If the source is missing, discovery remains incomplete; do not invent substitutes.
+This supplements the invoked planning skill without invoking grilling implicitly.
+
+Keep project identity and discovery in `.engineering-workflow-project.json`,
+outside the installed runtime: project UUID, audience/goals, public-facing status,
+standards source/version/hash, discovery entries and stable implementation key to
+UUID mappings. Preserve it across reinstall. Public-facing describes the intended
+project audience; it grants no permission to publish project facts or reviews.
+
 ## Implementation and review
 
 Use ew-subagent-driven-development for approved build tickets, or ew-matt-implement
@@ -64,6 +79,38 @@ are the explicit exception to the one-reviewer ticket budget. Consolidate findin
 into one fix pass. Security review is required when auth, trust boundaries, secrets
 or payments change; use native security review if present, otherwise an explicit
 security-focused review. Do not pretend a missing slash command exists.
+
+## Human implementation reviews
+
+Use ew-implementation-review at meaningful implementation checkpoints and final
+handoff. Give the human a short review in the session chat and queue the same
+review for Open Thoughts. Cover outcome, purpose and decisions, evidence and its
+limits, relevant standards implications, and what needs the human's attention.
+Only address contract sections relevant to the implementation; record uncertainty
+or gaps honestly. This narrative summarizes existing evidence. It adds no reviewer
+rounds, replaces no mandatory tests or independent review, grants no approval and
+never establishes completion by itself.
+
+Use the producer CLI to configure the project, upsert a review with its stable
+implementation key and expected base revision, attach feedback, and sync. Start
+with base revision zero; on conflict, read the current review and reconcile rather
+than overwriting it. Preserve implementation/session references and distinguish
+human feedback from agent interpretation. Feedback classifications are feedback,
+local clarification and shared-standard proposal. Shared proposals remain private
+and unadopted until a human adopts them through Git in the standards source;
+project feedback cannot silently change the shared contract.
+
+Canonical narratives and feedback belong in the Daydreamer private bundle. The
+producer's private outbox lives outside the repository; `--state-dir` selects an
+explicit alternative. Sync writes only to a local private bundle, selected by
+`--bundle`, `DAYDREAMER_BUNDLE`, or the existing home-relative Open Thoughts/daydream
+convention. The private Git bundle must already exist; sync never pushes.
+Existing private Git transport is external to this workflow. A cloud
+session queues an outbox for explicit import into the local private workflow;
+there is no new public API for private writes. Report queued, synced and failed
+states accurately. Preserve existing capture once; full Codex/Gemini transcript
+capture is deferred. Hooks may advertise missing checkpoints, but never infer
+completion or start paid calls.
 
 ## Completion and context
 
