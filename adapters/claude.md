@@ -7,10 +7,11 @@ Use Sonnet for mechanical tickets and ticket review; Opus for judgment/integrati
 Respect installed model availability. Resolve `<SDD_SKILL_DIR>` to the actual
 directory containing ew-subagent-driven-development/SKILL.md before running helpers.
 
-Hooks: SessionStart performs version/docs checks and optional Headroom startup;
+Hooks: SessionStart performs version/docs checks, optional Headroom startup and
+the optional always-on i-have-adhd ruleset;
 PreToolUse owns Guard; PostToolUse scans changed tracked files without printing
 matched secret text; Stop provides bounded continuation for a user-set active goal.
-Do not additionally enable the original Guard/Headroom/autopilot/docs-health plugins
+Do not additionally enable the original Guard/Headroom/autopilot/docs-health/i-have-adhd plugins
 for the same functions. The portable docs-health and autopilot skills replace the
 Claude TSX modules; their special status panes/buttons are not reproduced.
 
