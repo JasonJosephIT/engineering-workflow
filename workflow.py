@@ -16,10 +16,12 @@ import tempfile
 from datetime import datetime, timezone
 
 ROOT = Path(__file__).resolve().parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 REPOSITORY = "https://github.com/JasonJosephIT/engineering-workflow.git"
 START = "<!-- engineering-workflow:begin -->"
 END = "<!-- engineering-workflow:end -->"
-PLATFORMS = ("claude", "codex", "gemini")
+PLATFORMS = ("agy", "claude", "codex", "gemini")
 
 
 def read_json(path):
@@ -70,7 +72,7 @@ def package_paths(root=ROOT):
 
 def skill_map(root=ROOT):
     result = {}
-    for folder in (root / "skills", root / "vendor/mattpocock/skills"):
+    for folder in (root / "skills", root / "vendor/mattpocock/skills", root / "vendor/i-have-adhd/skills"):
         for p in sorted(folder.rglob("SKILL.md")):
             match = re.search(r"^name: ([a-z0-9-]+)$", p.read_text(), re.M)
             if not match or match[1] in result:
@@ -93,6 +95,9 @@ def freeze():
                 "install_record_sha": "028c97dcabbaa92b3da817fd512e95226cf6e700"},
             "personal-sdd": {"base": "superpowers 6.1.0", "adapted": "portable paths, models and bounded reviews"},
             "headroom": {"mode": "optional external CLI, one SessionStart hook only"},
+            "i-have-adhd": {"version": "0.4.1", "repository": "https://github.com/ayghri/i-have-adhd",
+                "install_record_sha": "1ecea1993b7fce257ffbd686c070948b5e07eda6", "adapted": "discovery name only",
+                "mode": "optional always-on ruleset, one SessionStart hook only"},
         },
     }
     (ROOT / "workflow.lock.json").write_bytes(encoded(lock))
@@ -151,6 +156,14 @@ def hook_config(platform, runtime, scope, headroom):
     else:
         command = "python3 " + shlex.quote(str(runtime / "workflow.py"))
     command += " hook --platform " + platform
+    if platform == "agy":
+        return {
+            "SessionStart": [{"type": "command", "command": command + " --event SessionStart", "timeout": 20}],
+            "PreToolUse": [{"matcher": "run_command", "hooks": [
+                {"type": "command", "command": command + " --event PreToolUse", "timeout": 20}]}],
+            "PostInvocation": [{"type": "command", "command": command + " --event PostInvocation", "timeout": 20}],
+            "Stop": [{"type": "command", "command": command + " --event Stop", "timeout": 20}],
+        }
     events = ("SessionStart", "BeforeTool", "AfterTool", "AfterAgent") if platform == "gemini" else (
         "SessionStart", "PreToolUse", "PostToolUse", "Stop")
     hooks = {}
@@ -163,6 +176,12 @@ def hook_config(platform, runtime, scope, headroom):
             entry["matcher"] = "Bash|exec_command|Write|Edit|NotebookEdit|apply_patch"
         hooks[event] = [entry]
     return hooks
+
+
+def merge_agy_hooks(data, additions):
+    data = json.loads(json.dumps(data))
+    data["engineering-workflow"] = additions
+    return data
 
 
 def merge_hooks(data, additions):
@@ -182,7 +201,8 @@ def merge_hooks(data, additions):
     return data
 
 
-OVERLAP = {"claude-guard", "headroom", "autopilot", "docs-health"}
+OVERLAP = {"claude-guard", "headroom", "autopilot", "docs-health", "i-have-adhd"}
+ADHD_SKILL = "vendor/i-have-adhd/skills/i-have-adhd/SKILL.md"
 RETIRED = {"superpowers", "engineering", "claude-taskmaster", "entertainment", "runpod"}
 
 
@@ -241,7 +261,8 @@ def install(args):
     links = {}
     runtime_text = str(runtime) if args.scope == "user" else ".engineering-workflow"
     for platform in platforms:
-        instruction = {"claude": ".claude/CLAUDE.md" if args.scope == "user" else "CLAUDE.md",
+        instruction = {"agy": ".gemini/GEMINI.md" if args.scope == "user" else "GEMINI.md",
+                       "claude": ".claude/CLAUDE.md" if args.scope == "user" else "CLAUDE.md",
                        "codex": ".codex/AGENTS.md" if args.scope == "user" else "AGENTS.md",
                        "gemini": ".gemini/GEMINI.md" if args.scope == "user" else "GEMINI.md"}[platform]
         block = (START + "\nThis managed engineering workflow supersedes earlier engineering-workflow rules.\n"
@@ -254,15 +275,18 @@ def install(args):
         target = base / instruction
         if target.is_symlink():
             raise ValueError("Refusing to rewrite symlinked instructions: " + str(target))
-        changes[target] = managed(target.read_text() if target.exists() else "", block).encode()
-        config_path = base / {"claude": ".claude/settings.json", "codex": ".codex/hooks.json",
-                             "gemini": ".gemini/settings.json"}[platform]
+        existing_text = changes[target].decode() if target in changes else (target.read_text() if target.exists() else "")
+        changes[target] = managed(existing_text, block).encode()
+        config_path = base / {"agy": ".gemini/config/hooks.json" if args.scope == "user" else ".agents/hooks.json",
+                              "claude": ".claude/settings.json", "codex": ".codex/hooks.json",
+                              "gemini": ".gemini/settings.json"}[platform]
         if config_path.is_symlink():
             raise ValueError("Refusing symlinked hook config")
         config = read_json(config_path) if config_path.exists() else {}
-        if args.replace_overlap:
+        if args.replace_overlap and platform != "agy":
             config = prune_overlap(config)
-        changes[config_path] = encoded(merge_hooks(config, hook_config(platform, runtime, args.scope, args.headroom)))
+        additions = hook_config(platform, runtime, args.scope, args.headroom)
+        changes[config_path] = encoded(merge_agy_hooks(config, additions) if platform == "agy" else merge_hooks(config, additions))
         skill_dir = base / (".claude/skills" if platform == "claude" else ".agents/skills")
         for name, path in lock["skills"].items():
             dest = skill_dir / name
@@ -309,7 +333,7 @@ def install(args):
         shutil.copy2(ROOT / "workflow.lock.json", stage / "workflow.lock.json")
         state = {"version": lock["version"], "release": lock["release"], "source_commit": git("rev-parse", "HEAD", cwd=ROOT),
                  "lock_sha256": digest((ROOT / "workflow.lock.json").read_bytes()), "repository": REPOSITORY,
-                 "platforms": platforms, "scope": args.scope, "headroom": args.headroom,
+                 "platforms": platforms, "scope": args.scope, "headroom": args.headroom, "adhd": args.adhd,
                  "hooks": "configured; live platform execution not verified"}
         (stage / "install.json").write_bytes(encoded(state))
         if runtime.exists():
@@ -455,7 +479,7 @@ def credential_paths(project, tool_input):
     project = find_project(project)
     names = git("diff", "--name-only", "HEAD", "--", cwd=project)
     paths = [(project / n) for n in (names or "").splitlines()]
-    for key in ("file_path", "path", "notebook_path"):
+    for key in ("file_path", "path", "Path", "notebook_path"):
         if isinstance(tool_input.get(key), str):
             p = Path(tool_input[key])
             paths.append(p if p.is_absolute() else project / p)
@@ -474,15 +498,35 @@ def credential_check(project, tool_input, root):
             + " changed file(s). Inspect locally; do not print or commit secret values.") if count else None
 
 
+def hook_cwd(data):
+    if isinstance(data.get("cwd"), str) and data["cwd"]:
+        return data["cwd"]
+    paths = data.get("workspacePaths")
+    if isinstance(paths, list) and paths and isinstance(paths[0], str) and paths[0]:
+        return paths[0]
+    return "."
+
+
+def default_hook_output(platform, event):
+    if platform == "agy":
+        if event == "PreToolUse": return {"decision": "ask"}
+        if event == "Stop": return {"decision": ""}
+    return {}
+
+
 def context_output(platform, event, message):
+    if platform == "agy":
+        if event == "SessionStart":
+            return {"injectSteps": [{"systemMessage": {"systemMessage": message}}]}
+        return {"injectSteps": [{"ephemeralMessage": message}]}
     if platform == "gemini":
         return {"hookSpecificOutput": {"hookEventName": event, "additionalContext": message}}
     return {"hookSpecificOutput": {"hookEventName": event, "additionalContext": message}}
 
 
-def hook(platform, data):
-    event = data.get("hook_event_name", "")
-    project = find_project(data.get("cwd", "."))
+def hook(platform, data, event=None):
+    event = event or data.get("hook_event_name", "")
+    project = find_project(hook_cwd(data))
     runtime = runtime_for(project)
     # Verify package bytes before invoking vendored runtime code.
     verify(runtime)
@@ -495,40 +539,54 @@ def hook(platform, data):
                 report["headroom"] = "startup ensure succeeded; compression not measured"
             else:
                 report["headroom"] = "requested but CLI unavailable; no compression claimed"
+        rules = ""
+        if state.get("adhd"):
+            # Same text the upstream always-on hook injects, minus front matter.
+            rules = (runtime / ADHD_SKILL).read_text().split("---", 2)[2].strip()
+            rules = ("\n\nADHD MODE ACTIVE (always-on). The ruleset below applies to every response. "
+                     '"stop adhd mode" turns it off for this session.\n\n' + rules)
+            report["adhd"] = "always-on ruleset injected"
         p = goal_path(project)
         if p.exists(): report["goal"] = read_json(p)
-        return context_output(platform, event, json.dumps(report))
+        return context_output(platform, event, json.dumps(report) + rules)
     if event in ("PreToolUse", "BeforeTool"):
-        inp = data.get("tool_input") or {}
-        tool = data.get("tool_name", "")
-        command = inp.get("command", inp.get("cmd", ""))
-        if tool in ("Bash", "exec_command", "shell_command", "run_shell_command") and isinstance(command, str):
+        tc = data.get("toolCall") if isinstance(data.get("toolCall"), dict) else {}
+        inp = (tc.get("args") if isinstance(tc.get("args"), dict) else None) or data.get("tool_input") or {}
+        tool = tc.get("name") or data.get("tool_name", "")
+        command = inp.get("command", inp.get("cmd", inp.get("CommandLine", "")))
+        if tool in ("Bash", "exec_command", "shell_command", "run_shell_command", "run_command") and isinstance(command, str):
             decision = guard_command(command, runtime)
             if decision in ("deny", "ask"):
                 reason = "Claude Guard requires local review of this command; command text withheld."
-                if platform == "gemini": return {"decision": "deny", "reason": reason}
+                if platform in ("gemini", "agy"): return {"decision": "deny", "reason": reason}
                 return {"hookSpecificOutput": {"hookEventName": event,
                     "permissionDecision": decision, "permissionDecisionReason": reason}}
-    if event in ("PostToolUse", "AfterTool"):
-        message = credential_check(project, data.get("tool_input") or {}, runtime)
+        return default_hook_output(platform, event)
+    if event in ("PostToolUse", "AfterTool", "PostInvocation"):
+        tc = data.get("toolCall") if isinstance(data.get("toolCall"), dict) else {}
+        inp = (tc.get("args") if isinstance(tc.get("args"), dict) else None) or data.get("tool_input") or {}
+        message = credential_check(project, inp, runtime)
         if message: return context_output(platform, event, message)
     if event in ("Stop", "AfterAgent"):
         # Subagents must not drive the controller's standing-goal loop.
-        if data.get("agent_id") or data.get("agentId"): return {}
+        if data.get("agent_id") or data.get("agentId"): return default_hook_output(platform, event)
+        if data.get("terminationReason") in ("USER_CANCELED", "ERROR"): return default_hook_output(platform, event)
         p = goal_path(project)
-        if not p.exists(): return {}
+        if not p.exists(): return default_hook_output(platform, event)
         current = read_json(p)
-        if current["status"] != "active": return {}
+        if current["status"] != "active": return default_hook_output(platform, event)
         if current["continuations"] >= current["limit"]:
             current["status"] = "needs-attention"
             p.write_bytes(encoded(current))
-            return {"systemMessage": "Workflow continuation budget exhausted; inspect goal status before resuming."}
+            msg = "Workflow continuation budget exhausted; inspect goal status before resuming."
+            return {"decision": "", "reason": msg} if platform == "agy" else {"systemMessage": msg}
         current["continuations"] += 1
         p.write_bytes(encoded(current))
         reason = ("Continue the explicitly requested workflow goal. Read .engineering-workflow-state/goal.json. "
                   "Do not broaden scope or bypass approvals. Complete with fresh evidence, or record a blocker.")
+        if platform == "agy": return {"decision": "continue", "reason": reason}
         return {"decision": "deny" if platform == "gemini" else "block", "reason": reason}
-    return {}
+    return default_hook_output(platform, event)
 
 
 def main():
@@ -544,6 +602,7 @@ def main():
                    help="Confirm the platform explicitly; installation never guesses")
     i.add_argument("--project", default="."); i.add_argument("--home", default=str(Path.home()))
     i.add_argument("--headroom", action="store_true"); i.add_argument("--dry-run", action="store_true")
+    i.add_argument("--adhd", action="store_true", help="Inject the vendored i-have-adhd ruleset at every session start")
     i.add_argument("--expected")
     i.add_argument("--replace-overlap", action="store_true",
                    help="Disable selected duplicate/retired plugins and old Headroom startup/shell hooks")
@@ -555,14 +614,15 @@ def main():
     g = sub.add_parser("goal"); g.add_argument("action", choices=("set", "status", "pause", "resume", "complete", "blocked"))
     g.add_argument("objective", nargs="?"); g.add_argument("--project", default="."); g.add_argument("--evidence")
     h = sub.add_parser("hook"); h.add_argument("--platform", choices=PLATFORMS, required=True)
+    h.add_argument("--event", default="")
     a = p.parse_args()
     try:
         raw_hook = None
         if a.command in ("session", "doctor", "docs", "goal", "hook", "project", "review"):
             if a.command == "hook":
                 raw_hook = sys.stdin.read()
-                data = json.loads(raw_hook)
-                selected = runtime_for(data.get("cwd", "."))
+                data = json.loads(raw_hook) if raw_hook.strip() else {}
+                selected = runtime_for(hook_cwd(data))
             else:
                 selected = runtime_for(a.project)
             if selected.resolve() != ROOT:
@@ -570,7 +630,8 @@ def main():
                 if a.command == "hook":
                     # A project install registers its own lifecycle handlers.
                     # Global hooks yield rather than running every event twice.
-                    print("{}")
+                    ev = a.event or data.get("hook_event_name", "")
+                    print(json.dumps(default_hook_output(a.platform, ev)))
                     return 0
                 # Execute the pinned implementation, not the global copy's semantics.
                 return subprocess.run([sys.executable, "-B", str(selected / "workflow.py"),
@@ -583,13 +644,17 @@ def main():
         elif a.command == "docs": print(json.dumps(docs(a.project, a.refresh), indent=2))
         elif a.command == "goal": goal(a)
         elif a.command == "hook":
-            print(json.dumps(hook(a.platform, data)))
+            print(json.dumps(hook(a.platform, data, event=a.event)))
     except (ValueError, OSError, KeyError, subprocess.SubprocessError) as error:
         # Do not echo raw tool inputs, subprocess output or credentials.
         if a.command == "hook":
             print("Engineering workflow hook failed; verification/enforcement unavailable.", file=sys.stderr)
-            if isinstance(locals().get("data"), dict) and data.get("hook_event_name") in ("Stop", "AfterAgent"):
-                print(json.dumps({"continue": False, "stopReason": "Workflow verification failed; inspect installation before resuming."}))
+            ev = getattr(a, "event", "") or (data.get("hook_event_name") if isinstance(locals().get("data"), dict) else "")
+            if ev in ("Stop", "AfterAgent"):
+                if a.platform == "agy":
+                    print(json.dumps({"decision": "", "reason": "Workflow verification failed; inspect installation before resuming."}))
+                else:
+                    print(json.dumps({"continue": False, "stopReason": "Workflow verification failed; inspect installation before resuming."}))
                 return 0
             return 2
         print("Error:", error, file=sys.stderr)

@@ -15,7 +15,7 @@ import uuid
 
 PROJECT_FILE = '.engineering-workflow-project.json'
 SECTIONS = ('outcome', 'purpose_decisions', 'evidence_limits', 'standards_implications', 'your_attention')
-PLATFORMS = ('claude', 'codex', 'gemini')
+PLATFORMS = ('agy', 'claude', 'codex', 'gemini')
 SECRETS = re.compile(r'(?:sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}'
     r'|AKIA[0-9A-Z]{16}|xox[abprs]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----'
     r'|(?i:password|api[_ -]?key|secret)\s*[:=]\s*[^\s,;]+)')

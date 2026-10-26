@@ -41,6 +41,12 @@ active. Native Codex tools may have their own context management; do not add
 another proxy by default. TypeSafe's installed plugin supplies semantic AI APIs,
 not computer control. Keep it separate unless a project actually uses it.
 
+Add `--adhd` to load the vendored i-have-adhd ruleset (`ew-i-have-adhd`) at every
+session start. The same single startup hook injects it; only Claude has session
+evidence so far. Without the flag the skill
+stays installed but runs only when invoked. `--replace-overlap` disables the
+standalone i-have-adhd plugin so the ruleset is not loaded twice.
+
 ## Pin each project
 
 A user install covers future local sessions. A **project install** commits the

@@ -8,6 +8,13 @@
     "headroom": {
       "mode": "optional external CLI, one SessionStart hook only"
     },
+    "i-have-adhd": {
+      "adapted": "discovery name only",
+      "install_record_sha": "1ecea1993b7fce257ffbd686c070948b5e07eda6",
+      "mode": "optional always-on ruleset, one SessionStart hook only",
+      "repository": "https://github.com/ayghri/i-have-adhd",
+      "version": "0.4.1"
+    },
     "mattpocock-skills": {
       "adapted": "discovery name only",
       "repository": "https://github.com/mattpocock/skills",
@@ -21,15 +28,16 @@
   },
   "files": {
     "LICENSE": "1ff535e3e56012b4b3af3a3418968032d4da65977fe302952019e33c5304a7cd",
-    "README.md": "44f348d15b985ba3074d203eafe47aa3c3b483c394687fe4c1726ae01e0df1e2",
-    "SOURCES.md": "45879a2ec4b0e3386d5723ef48fa1ec5771ecafa093dda4b0381a7c66376ca8e",
+    "README.md": "e4d92e28f0500062e30bfa7a98e49df63f483e6d5032793189ca6f51cdc184e7",
+    "SOURCES.md": "283253f7ce0f8fb0cc9a7eec8de358395ef5e05ec68f55858f1ac30dd814aa0d",
     "VERSION": "1f930dd1f133c1f97a94fe3acb8db34372cf4c01ffdb2b3ff4ca72f9494121e9",
-    "adapters/claude.md": "77d0758eeceebb1992391c0de26d0550244c0cb3f3b1f587f3e94354197c4c90",
+    "adapters/agy.md": "5306fc7efe9725375e7967dc95f9d9909127f0f44f8f4bd2ccb6b9c74b5255a9",
+    "adapters/claude.md": "82ea538654fce17ee671f34f9791dfb32a93fac11505254891b32966a091039e",
     "adapters/codex.md": "87b2d59b19c608e7aa4aa2de93716e42a0a4892dc5c0255b234b6850b6620c13",
     "adapters/gemini.md": "151cd43297b5c1ff784e2975fc96ba516d68439171191607dea83941b4349b92",
     "core/REVIEW_CONTRACT.md": "298ba415ea78f5d8e9ce0ee3e4ce26b2f17cddc1e6f07b6d2d5384e22e2cec47",
     "core/WORKFLOW.md": "5779f9099e7f9a76f5a49b6587aa238069b53c9171a9ab10874d32eaad5dea72",
-    "reviews.py": "9265e753d0cc591fef17c77229e093aa4c5ee26c2b18e472b9da7d370642cae7",
+    "reviews.py": "8c14cdfea96555862ca413fc9d2ecd4b84e6b9a00e99b78c68934e32ef31ea95",
     "skills/autopilot/SKILL.md": "48e03cfbaa4d01fa058f7f21db12ccf239ddaad3b1ed1c04b45b4808320da8cb",
     "skills/deploy-checklist/SKILL.md": "ec7a1df34b92b25c0df89e2d0f16b9f87d36c342a6488612d5ebb4156c00a13d",
     "skills/docs-health/SKILL.md": "8b5174f9c7eb096b374fccda48fff5d4d12efd958d333ed41c03b7548fc283db",
@@ -62,6 +70,8 @@
     "vendor/claude-guard/guard/packs/dns.py": "15c297e5c5bb22bc2dda997bbda3f2942e9ff88b505acb30b6ca0af4d1114def",
     "vendor/claude-guard/guard/packs/infra.py": "c86f13d03a0378b3fac21b1249e01c1bad8483f62a5a4f4cf5954123c05c0fef",
     "vendor/claude-guard/guard/protocol.py": "7702b1c329957b35da531b63c6446a080fc0d6d96fdca59a4109cd1dda846946",
+    "vendor/i-have-adhd/LICENSE": "8acbb618089b738404f76ac60fca1aaa995d9a87995eddf95f0b777acd7f7d2c",
+    "vendor/i-have-adhd/skills/i-have-adhd/SKILL.md": "4def586c189de761acc71cb2ae18c52dbbb98698a11a4402e6d5af87694ef319",
     "vendor/licenses/SUPERPOWERS-MIT.txt": "a37e0e9697144819e1d965176ac4ae5bc3fa02d11e7812036bbcadf6dafe2400",
     "vendor/mattpocock/GLOSSARY.md": "4b5291aae26ee0cca5ee31c20b4652d3988a063b2348ed48a751ce9c660a5614",
     "vendor/mattpocock/LICENSE": "0e7ac423bf2c6e223b7c5b156f8cf72da49d748e56a1641402c31f22ad07dbb5",
@@ -145,7 +155,7 @@
     "vendor/mattpocock/skills/productivity/writing-for-agents/SKILL-MECHANICS.md": "c768e6307c7c10728c401c213f2c4ba71c542127eeb7ad2956aabd15a0fa0059",
     "vendor/mattpocock/skills/productivity/writing-for-agents/SKILL.md": "7e3a8a88fc251fae5224405967fc7731313c2767c732cdf77c78a4855a682580",
     "vendor/mattpocock/skills/productivity/writing-for-agents/agents/openai.yaml": "eacb24b2a618cfb81dacb0416f4fdd75ddf3a8060f8ddb99aae1b1e301907e4b",
-    "workflow.py": "75b90b9a6bd035a66da9a7668d2cb568195c549def2c0f9dc2baf914f614e139"
+    "workflow.py": "9f9095a44b168cc957f07e4a401a2fb0aeff7ec679d8dafdafff44823e66c672"
   },
   "name": "engineering-workflow",
   "release": "v0.2.0",
@@ -156,6 +166,7 @@
     "ew-deploy-checklist": "skills/deploy-checklist",
     "ew-docs-health": "skills/docs-health",
     "ew-finishing-a-development-branch": "skills/finishing-a-development-branch",
+    "ew-i-have-adhd": "vendor/i-have-adhd/skills/i-have-adhd",
     "ew-implementation-review": "skills/implementation-review",
     "ew-incident-response": "skills/incident-response",
     "ew-matt-ask-matt": "vendor/mattpocock/skills/engineering/ask-matt",

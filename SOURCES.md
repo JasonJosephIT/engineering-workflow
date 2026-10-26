@@ -13,6 +13,7 @@ history, or private project content is included.
 | Deploy / incident support | Personal copies of engineering plugin skills | vendored 2026-10-14; individual revision unavailable |
 | Autopilot / docs-health | New stdlib implementation of requested behavior | package version; no dependency on Claude TSX runtime |
 | Headroom | https://github.com/headroomlabs-ai/headroom | external optional runtime; not vendored or auto-updated |
+| i-have-adhd | https://github.com/ayghri/i-have-adhd | 0.4.1, marketplace install record 1ecea1993b7fce257ffbd686c070948b5e07eda6; SKILL.md only, renamed ew-i-have-adhd |
 | Implementation review | Original workflow integration | v0.2.0 producer guidance; private Daydreamer bundle and outbox |
 | Portfolio discovery standard | Open Thoughts `standards/portfolio-enrichment.json` and `docs/adr/ADR-002-eight-section-enrichment.md` | external versioned contract 1.0.0; source/version/hash pinned per project, not vendored |
 
@@ -46,6 +47,7 @@ No claim is made that its rules cover every execution mechanism.
 Superpowers' MIT license is retained in vendor/licenses/SUPERPOWERS-MIT.txt.
 Matt Pocock's MIT license is vendor/mattpocock/LICENSE.
 Guard's MIT license is vendor/claude-guard/LICENSE.
+i-have-adhd's MIT license is vendor/i-have-adhd/LICENSE.
 Ponytail declares MIT. The other personal support copies did not supply a separate
 license header; this private package preserves their provenance and does not
 assert a new license for third-party material. Confirm rights before public release.

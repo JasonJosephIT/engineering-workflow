@@ -60,7 +60,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(parsed["env"], {"CUSTOM": "preserve"})
         self.assertEqual(parsed["permissions"], {"deny": ["Bash(sudo *)"]})
         self.assertTrue(list((self.project / ".workflow-backups").glob("*/AGENTS.md")))
-        self.assertEqual(len(list((self.project / ".agents/skills").iterdir())), 40)
+        self.assertEqual(len(list((self.project / ".agents/skills").iterdir())), 41)
 
     def test_idempotent_install_no_duplicate_hooks_or_blocks(self):
         self.install()
@@ -70,6 +70,8 @@ class WorkflowTests(unittest.TestCase):
         for rel in (".claude/settings.json", ".codex/hooks.json", ".gemini/settings.json"):
             data = json.loads((self.project / rel).read_text())
             self.assertTrue(all(len(entries) == 1 for entries in data["hooks"].values()))
+        agy_hooks = json.loads((self.project / ".agents/hooks.json").read_text())
+        self.assertIn("engineering-workflow", agy_hooks)
 
     def test_tampering_fails_session(self):
         self.install()
@@ -147,7 +149,7 @@ class WorkflowTests(unittest.TestCase):
             return atomic(path, content)
 
         args = Namespace(scope="project", project=str(self.project), home=str(self.base),
-            platform="all", expected=None, headroom=False, dry_run=False, replace_overlap=False)
+            platform="all", expected=None, headroom=False, adhd=False, dry_run=False, replace_overlap=False)
         with patch.object(workflow, "write_atomic", side_effect=fail_config):
             with self.assertRaises(PermissionError):
                 workflow.install(args)
@@ -159,7 +161,8 @@ class WorkflowTests(unittest.TestCase):
         home = self.base / "home"; (home / ".claude").mkdir(parents=True)
         (home / ".codex").mkdir()
         c = home / ".claude/settings.json"
-        c.write_text(json.dumps({"enabledPlugins": {"headroom@market": True, "unrelated@market": True},
+        c.write_text(json.dumps({"enabledPlugins": {"headroom@market": True, "unrelated@market": True,
+                                                    "i-have-adhd@i-have-adhd": True},
             "hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [
                 {"type": "command", "command": "/bin/headroom init hook ensure"},
                 {"type": "command", "command": "keep-unrelated-hook"}]}]}}))
@@ -168,6 +171,7 @@ class WorkflowTests(unittest.TestCase):
         self.cli("install", "--scope", "user", "--home", str(home), "--platform", "all", "--replace-overlap")
         data = json.loads(c.read_text())
         self.assertFalse(data["enabledPlugins"]["headroom@market"])
+        self.assertFalse(data["enabledPlugins"]["i-have-adhd@i-have-adhd"])
         self.assertTrue(data["enabledPlugins"]["unrelated@market"])
         hooks = str(data["hooks"])
         self.assertIn("keep-unrelated-hook", hooks)
@@ -176,6 +180,21 @@ class WorkflowTests(unittest.TestCase):
         d = tomllib.loads(t.read_text())
         self.assertFalse(d["plugins"]["headroom@market"]["enabled"])
         self.assertTrue(d["plugins"]["keep@market"]["enabled"])
+
+    def test_adhd_ruleset_injected_only_when_installed_with_flag(self):
+        def start():
+            r = subprocess.run([sys.executable, "-B", str(self.project / ".engineering-workflow/workflow.py"),
+                "hook", "--platform", "claude"], input=json.dumps({"hook_event_name": "SessionStart",
+                "cwd": str(self.project)}), text=True, capture_output=True, check=True)
+            return json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+        self.install("--adhd")
+        context = start()
+        self.assertIn('"adhd": "always-on ruleset injected"', context)
+        self.assertIn("ADHD MODE ACTIVE", context)
+        self.assertNotIn("name: ew-i-have-adhd", context)
+        self.assertTrue((self.project / ".claude/skills/ew-i-have-adhd").is_symlink())
+        self.install()
+        self.assertNotIn("ADHD MODE", start())
 
     def test_guard_allow_and_block_all_platform_protocols(self):
         for platform, event, tool in (("claude", "PreToolUse", "Bash"),
@@ -189,6 +208,33 @@ class WorkflowTests(unittest.TestCase):
             self.assertNotIn("rm -rf", json.dumps(result))
             if platform == "gemini": self.assertEqual(result["decision"], "deny")
             else: self.assertEqual(result["hookSpecificOutput"]["permissionDecision"], "deny")
+        agy_safe = {"workspacePaths": [str(self.project)],
+                    "toolCall": {"name": "run_command", "args": {"CommandLine": "git status"}}}
+        self.assertEqual(workflow.hook("agy", agy_safe, event="PreToolUse"), {"decision": "ask"})
+        agy_bad = {"workspacePaths": [str(self.project)],
+                   "toolCall": {"name": "run_command", "args": {"CommandLine": "rm -rf /"}}}
+        agy_res = workflow.hook("agy", agy_bad, event="PreToolUse")
+        self.assertNotIn("rm -rf", json.dumps(agy_res))
+        self.assertEqual(agy_res["decision"], "deny")
+
+    def test_agy_hooks_preserve_orca_and_handle_lifecycle(self):
+        home = self.base / "agy-home"
+        orca_cfg = home / ".gemini/config/hooks.json"
+        orca_cfg.parent.mkdir(parents=True)
+        orca_cfg.write_text(json.dumps({"orca-status": {"Stop": [{"type": "command", "command": "orca-stop"}]}}))
+        self.cli("install", "--scope", "user", "--home", str(home), "--platform", "agy")
+        merged = json.loads(orca_cfg.read_text())
+        self.assertIn("orca-status", merged)
+        self.assertIn("engineering-workflow", merged)
+        start = workflow.hook("agy", {"workspacePaths": [str(self.project)]}, event="SessionStart")
+        self.assertIn("verified", start["injectSteps"][0]["systemMessage"]["systemMessage"])
+        self.assertEqual(workflow.hook("agy", {"workspacePaths": [str(self.project)]}, event="Stop"), {"decision": ""})
+        self.cli("goal", "set", "approved agy task", "--project", str(self.project))
+        self.assertEqual(workflow.hook("agy", {"workspacePaths": [str(self.project)],
+                                               "terminationReason": "USER_CANCELED"}, event="Stop"), {"decision": ""})
+        cont = workflow.hook("agy", {"workspacePaths": [str(self.project)],
+                                     "terminationReason": "NO_TOOL_CALL"}, event="Stop")
+        self.assertEqual(cont["decision"], "continue")
 
     def test_goal_continuations_are_bounded_and_pausing_stops(self):
         self.cli("goal", "set", "approved task", "--project", str(self.project))
