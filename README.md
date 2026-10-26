@@ -89,6 +89,8 @@ GitHub authentication and compare the expected release commit when bootstrapping
 
 An upgrade is explicit: inspect a new release, check out its tag in this package
 repository and rerun install. No startup pull or silent upstream skill updates.
+`ew-workflow-update` does those steps on request: tests, install with the recorded
+flags, verify; for the user install or, with `--project`, a project's pin.
 User defaults may advance while projects retain their committed older pins.
 
 ## Project discovery and implementation reviews
