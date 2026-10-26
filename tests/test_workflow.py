@@ -40,7 +40,7 @@ class WorkflowTests(unittest.TestCase):
         return self.cli("install", "--project", str(self.project), "--platform", "all", *args)
 
     def test_package_integrity_and_version(self):
-        self.assertEqual(workflow.verify()["version"], "0.2.0")
+        self.assertEqual(workflow.verify()["version"], "0.2.1")
         with self.assertRaises(ValueError):
             workflow.verify(expected="99.0.0")
 
