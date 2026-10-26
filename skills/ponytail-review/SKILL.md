@@ -10,6 +10,8 @@ description: >
   hunts complexity.
 ---
 
+Run at ponytail ultra: question whether each piece needs to exist at all, and prefer deletion to any other fix.
+
 Review diffs for unnecessary complexity. One line per finding: location, what
 to cut, what replaces it. The diff's best outcome is getting shorter.
 

@@ -9,6 +9,8 @@ description: >
   not apply fixes.
 ---
 
+Run at ponytail ultra: question whether each piece needs to exist at all, and prefer deletion to any other fix.
+
 ponytail-review, repo-wide. Scan the whole tree instead of a diff. Rank
 findings biggest cut first.
 
