@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skill Routing Design</title>
+<style>
+:root{
+  --bg:#f7f6f2; --panel:#ffffff; --ink:#1d1d1b; --muted:#6b6a63; --line:#dcdad2;
+  --human:#2f6fdb; --human-bg:#e7efff; --agent:#1f8a5b; --agent-bg:#e3f4ec;
+  --orca:#8a4fd1; --orca-bg:#f1e8fc; --warn:#c26a00; --warn-bg:#fff1dc; --stop:#c23b3b;
+  --term:#16161a; --term-ink:#e6e4dc;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#151513; --panel:#1f1f1c; --ink:#ecebe6; --muted:#a3a198; --line:#3a3934;
+    --human:#7aa7ff; --human-bg:#1d2a44; --agent:#5fd19c; --agent-bg:#173126;
+    --orca:#c39bff; --orca-bg:#2c2140; --warn:#ffb456; --warn-bg:#3a2a12; --stop:#ff7b7b;
+    --term:#0d0d10;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#151513; --panel:#1f1f1c; --ink:#ecebe6; --muted:#a3a198; --line:#3a3934;
+  --human:#7aa7ff; --human-bg:#1d2a44; --agent:#5fd19c; --agent-bg:#173126;
+  --orca:#c39bff; --orca-bg:#2c2140; --warn:#ffb456; --warn-bg:#3a2a12; --stop:#ff7b7b;
+  --term:#0d0d10;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif}
+main{max-width:1040px;margin:0 auto;padding:28px 16px 64px}
+h1{font-size:28px;margin:0 0 4px;letter-spacing:-.01em}
+h2{font-size:19px;margin:36px 0 10px}
+h3{font-size:15px;margin:0 0 6px}
+p{margin:6px 0}
+.sub{color:var(--muted)}
+.pill{display:inline-block;font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted);margin-right:6px}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr))}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}
+.card.h{border-left:4px solid var(--human)} .card.a{border-left:4px solid var(--agent)} .card.o{border-left:4px solid var(--orca)} .card.w{border-left:4px solid var(--warn)}
+code{font-family:var(--mono);font-size:12.5px;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:0 4px;overflow-wrap:anywhere}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:10px;font-size:14px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+tr:last-child td{border-bottom:0}
+.tag{font-size:11px;font-weight:700;padding:2px 7px;border-radius:99px;white-space:nowrap}
+.t-new{background:var(--agent-bg);color:var(--agent)} .t-orca{background:var(--orca-bg);color:var(--orca)} .t-user{background:var(--human-bg);color:var(--human)} .t-has{background:var(--bg);color:var(--muted);border:1px solid var(--line)}
+.term{background:var(--term);color:var(--term-ink);border-radius:10px;padding:14px;font:12.5px/1.6 var(--mono);overflow-x:auto;white-space:pre}
+.term .g{color:#5fd19c}.term .b{color:#7aa7ff}.term .a{color:#ffb456}.term .r{color:#ff7b7b}.term .d{color:#8a887f}.term .p{color:#c39bff}
+.two{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))}
+ul{margin:6px 0;padding-left:20px}
+</style>
+</head>
+<body>
+<main>
+<h1>Skill routing, add-ons &amp; the EW dashboard</h1>
+<p class="sub"><span class="pill">design · grilled 2026-10-28</span><span class="pill">branch feature/skill-routing</span><span class="pill">ships after factory mode (v0.3.0)</span></p>
+<p>EW will say which of your other skills to use at each stage, use them only when installed, install them as add-ons, keep domain packs out of every session, and give you a ticket-first dashboard.</p>
+
+<h2>1 · Stage → skill routing</h2>
+<div class="scroll"><table>
+<tr><th>Stage</th><th>Skill</th><th>When</th><th></th></tr>
+<tr><td>Session start</td><td><code>graphify</code></td><td>Graph exists: read <code>GRAPH_REPORT.md</code> before exploring</td><td><span class="tag t-has">exists</span></td></tr>
+<tr><td>Session start</td><td><code>graphify</code></td><td>No graph: offer once to build a code-only graph (no LLM); "no" is remembered</td><td><span class="tag t-new">new</span></td></tr>
+<tr><td>Planning</td><td><code>graphify query</code></td><td>Before reading code for a question</td><td><span class="tag t-new">new</span></td></tr>
+<tr><td>Planning</td><td><code>codebase-explainer</code></td><td>Unfamiliar repo, or you ask</td><td><span class="tag t-new">new</span></td></tr>
+<tr><td>Build (SDD)</td><td><code>graphify</code></td><td>Context packs start from the ticket files' graph neighbours</td><td><span class="tag t-new">new</span></td></tr>
+<tr><td>Bug / failing test</td><td><code>ew-matt-diagnosing-bugs</code></td><td>Anything broken, throwing or slow</td><td><span class="tag t-new">routed</span></td></tr>
+<tr><td>Branch review</td><td><code>multi-model-review</code></td><td>Orca available: every branch, <b>replaces</b> code-review + ponytail-review</td><td><span class="tag t-orca">Orca</span></td></tr>
+<tr><td>Branch review</td><td><code>ew-matt-code-review</code> → <code>ew-ponytail-review</code></td><td>No Orca; multi-model-review only when you ask</td><td><span class="tag t-has">exists</span></td></tr>
+<tr><td>Spec / ticket changes UI</td><td><code>design-director</code> <span class="sub">(design-genius)</span></td><td>Sets direction before the build: Direction → Build → Review</td><td><span class="tag t-new">new</span></td></tr>
+<tr><td>Branch review, UI changed</td><td><code>critique</code> <span class="sub">(design-genius)</span></td><td>Alongside the branch review</td><td><span class="tag t-new">new</span></td></tr>
+<tr><td>Design ask outside a ticket</td><td><code>design-genius</code></td><td>Not routed: you prompt it</td><td><span class="tag t-user">you</span></td></tr>
+<tr><td>After merge</td><td><code>graphify update</code></td><td>Refresh and commit <code>graphify-out/</code></td><td><span class="tag t-has">exists</span></td></tr>
+</table></div>
+<p class="sub">Add-ons are used only when installed. <code>workflow.py session</code> reports which were found; a missing one is reported, never faked.</p>
+
+<h2>2 · Add-ons, packs and what stays global</h2>
+<div class="grid">
+<div class="card a"><h3>Add-ons · <code>workflow.py addon</code></h3><p class="sub">install · list · remove — pinned and verified like EW skills</p><ul><li>graphify</li><li>multi-model-review <span class="sub">(own private repo)</span></li><li>codebase-explainer</li><li>design-genius</li><li>ew-flightdeck <span class="sub">(Claude only)</span></li></ul></div>
+<div class="card o"><h3>Domain packs · <code>workflow.py pack</code></h3><p class="sub">add · remove — linked into one project only</p><ul><li><b>web-design</b>: awwwards ×5, cast/bunshin/paint, clone-website, extract-design, dembrandt, generate-ui-from-brand</li><li><b>output-engine</b></li><li><b>personal</b>: brag-slim, resumes, financial-insights, payment credential, link identity</li></ul></div>
+<div class="card h"><h3>Global (outside EW)</h3><ul><li>design-genius <span class="sub">(replaces frontend-team)</span></li><li>graphify</li><li>watch-lite / watch-plus</li></ul><p class="sub">Everything else is an <code>ew-</code> skill, an add-on, or a pack.</p></div>
+</div>
+
+<h2>3 · ew-flightdeck</h2>
+<div class="two">
+<div>
+<p>A fork of FlightDeck (MIT) as an add-on. It shows in the terminal and in the desktop app's Code tab, but not on your phone over Remote Control.</p>
+<div class="scroll"><table>
+<tr><th>Panel</th><th>Change</th></tr>
+<tr><td>main</td><td>keep: model, context, cost, rate limits</td></tr>
+<tr><td>architect</td><td>keep; EW reviewers count as the architect</td></tr>
+<tr><td>tickets</td><td><b>new</b>: tickets in progress across every session and project, each with its agents and permission checks (replaces agents + gate)</td></tr>
+<tr><td>last prompt</td><td><b>new</b>: time since your last prompt</td></tr>
+<tr><td>log · loops · receipt</td><td>removed</td></tr>
+</table></div>
+<p class="sub">Source: EW hooks write one small JSON file per active ticket into EW's local state folder; the mod re-reads them on a timer. Factory mode uses the same files.</p>
+</div>
+<div>
+<h3>Mockup</h3>
+<div class="term"><span class="b">┌ MAIN ─────────────────────────────────┐</span>
+ opus · high · auto      ctx <span class="g">████████░░</span> 62%
+ $4.18 session   5h <span class="a">71%</span> ↻1h20m
+<span class="b">├ ARCHITECT ────────────────────────────┤</span>
+ <span class="p">●──●────●</span>  last: branch review 3m ago
+<span class="b">├ TICKETS ──────────────────────────────┤</span>
+ <span class="g">▶</span> T3 addon-install   ew-repo   2 agents
+   gate <span class="g">■■■■</span><span class="b">■</span><span class="a">■</span>   review 1/1   12m
+ <span class="g">▶</span> T4 pack-link       ew-repo   1 agent
+   gate <span class="g">■■</span><span class="r">✗</span>      implementing  4m
+ <span class="g">▶</span> T2 spike-orca      factory   1 agent
+   gate <span class="g">■■■</span>      testing       21m
+<span class="b">└───────────────────────────────────────┘</span>
+ <span class="d">last prompt 6m ago</span></div>
+</div>
+</div>
+
+<h2>How it ties to factory mode</h2>
+<p>Factory mode (<a href="factory-mode.html">design</a>, v0.3.0) runs the same stages unattended on Orca; routing applies inside it unchanged.</p>
+<img src="ew-map.svg" alt="How factory mode and skill routing fit the engineering workflow" style="width:100%;height:auto;border:1px solid var(--line);border-radius:10px">
+
+<h2>Left for /to-spec</h2>
+<ul>
+<li>How each add-on is fetched (git tag or package manager) and pinned.</li>
+<li>Claude-only add-ons on Codex/Gemini: skipped with a report.</li>
+<li>Release number after v0.3.0.</li>
+</ul>
+</main>
+</body>
+</html>

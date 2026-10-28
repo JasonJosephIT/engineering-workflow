@@ -1,0 +1,127 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 500" width="900" height="500" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+<title>How factory mode and skill routing fit the engineering workflow</title>
+<style>
+  .bg{fill:#f7f6f2}
+  .box{fill:#ffffff;stroke:#dcdad2;stroke-width:1.2}
+  .human{stroke:#2f6fdb;stroke-width:2}
+  .orca{stroke:#8a4fd1;stroke-width:2}
+  .agent{stroke:#1f8a5b;stroke-width:2}
+  .addon{stroke:#c26a00;stroke-width:2;stroke-dasharray:5 3}
+  .t{fill:#1d1d1b;font-size:12.5px;font-weight:600}
+  .s{fill:#6b6a63;font-size:11px}
+  .a{fill:#c26a00;font-size:11px;font-weight:600}
+  .lane{fill:#6b6a63;font-size:11px;font-weight:700;letter-spacing:.08em}
+  .ln{stroke:#9a988f;stroke-width:1.4;fill:none}
+  .lbl{fill:#6b6a63;font-size:10.5px}
+  .sep{stroke:#dcdad2;stroke-width:1}
+  .arrowhead{fill:#9a988f}
+  @media (prefers-color-scheme:dark){
+    .bg{fill:#151513}.box{fill:#1f1f1c;stroke:#3a3934}
+    .t{fill:#ecebe6}.s,.lane,.lbl{fill:#a3a198}.a{fill:#ffb456}
+    .human{stroke:#7aa7ff}.orca{stroke:#c39bff}.agent{stroke:#5fd19c}.addon{stroke:#ffb456}
+    .sep{stroke:#3a3934}
+  }
+</style>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker></defs>
+<rect class="bg" width="900" height="500"/>
+
+<text class="lane" x="20" y="30">PLAN · HUMAN-LED</text>
+<text class="lane" x="230" y="30">BUILD</text>
+<text class="lane" x="540" y="30">REVIEW</text>
+<text class="lane" x="750" y="30">FINISH</text>
+<line class="sep" x1="215" y1="40" x2="215" y2="280"/><line class="sep" x1="525" y1="40" x2="525" y2="440"/><line class="sep" x1="735" y1="40" x2="735" y2="440"/>
+
+<!-- Plan -->
+<rect class="box human" x="20" y="50" width="180" height="44" rx="8"/>
+<text class="t" x="110" y="70" text-anchor="middle">grill / Wayfinder</text>
+<text class="s" x="110" y="85" text-anchor="middle">graphify query before code</text>
+<rect class="box human" x="20" y="120" width="180" height="44" rx="8"/>
+<text class="t" x="110" y="140" text-anchor="middle">/to-spec</text>
+<text class="s" x="110" y="155" text-anchor="middle">UI? → design-director</text>
+<rect class="box human" x="20" y="190" width="180" height="52" rx="8"/>
+<text class="t" x="110" y="211" text-anchor="middle">/to-tickets</text>
+<text class="s" x="110" y="228" text-anchor="middle">+ blast_radius low·med·high</text>
+<path class="ln" d="M110,94 V118" marker-end="url(#ah)"/>
+<path class="ln" d="M110,164 V188" marker-end="url(#ah)"/>
+<path class="ln" d="M200,216 H214 V72 H228" marker-end="url(#ah)"/>
+
+<!-- Build -->
+<rect class="box human" x="230" y="50" width="280" height="44" rx="8"/>
+<text class="t" x="370" y="70" text-anchor="middle">Build here, or install the factory?</text>
+<text class="s" x="370" y="85" text-anchor="middle">asked after tickets are approved</text>
+<rect class="box agent" x="230" y="120" width="130" height="56" rx="8"/>
+<text class="t" x="295" y="142" text-anchor="middle">SDD</text>
+<text class="s" x="295" y="158" text-anchor="middle">this session</text>
+<rect class="box orca" x="380" y="120" width="130" height="56" rx="8"/>
+<text class="t" x="445" y="139" text-anchor="middle">ew-factory</text>
+<text class="s" x="445" y="153" text-anchor="middle">Orca · hourly · 3 at once</text>
+<text class="s" x="445" y="167" text-anchor="middle">cards · Needs-Human</text>
+<path class="ln" d="M300,94 V118" marker-end="url(#ah)"/>
+<path class="ln" d="M440,94 V118" marker-end="url(#ah)"/>
+<rect class="box agent" x="230" y="200" width="280" height="96" rx="8"/>
+<text class="t" x="370" y="220" text-anchor="middle">Ticket worker (own worktree)</text>
+<text class="s" x="370" y="238" text-anchor="middle">ew-ponytail → ew-matt-tdd</text>
+<text class="a" x="370" y="254" text-anchor="middle">graphify context pack · design-director if UI</text>
+<text class="s" x="370" y="270" text-anchor="middle">ew-matt-diagnosing-bugs on failures</text>
+<text class="s" x="370" y="286" text-anchor="middle">turn cap 100 · 90 min</text>
+<path class="ln" d="M295,176 V198" marker-end="url(#ah)"/>
+<path class="ln" d="M445,176 V198" marker-end="url(#ah)"/>
+
+<!-- Review -->
+<rect class="box agent" x="540" y="200" width="180" height="52" rx="8"/>
+<text class="t" x="630" y="221" text-anchor="middle">Ticket review</text>
+<text class="s" x="630" y="238" text-anchor="middle">1 reviewer · ≤1 fix round</text>
+<path class="ln" d="M510,226 H538" marker-end="url(#ah)"/>
+<rect class="box human" x="540" y="120" width="180" height="56" rx="8"/>
+<text class="t" x="630" y="141" text-anchor="middle">Merge to integration</text>
+<text class="s" x="630" y="157" text-anchor="middle">high radius: you approve</text>
+<text class="s" x="630" y="170" text-anchor="middle">never main</text>
+<path class="ln" d="M630,200 V178" marker-end="url(#ah)"/>
+<rect class="box agent" x="540" y="300" width="180" height="96" rx="8"/>
+<text class="t" x="630" y="320" text-anchor="middle">Branch review</text>
+<text class="a" x="630" y="338" text-anchor="middle">Orca: multi-model-review</text>
+<text class="s" x="630" y="354" text-anchor="middle">else code-review + ponytail</text>
+<text class="a" x="630" y="370" text-anchor="middle">+ critique if UI changed</text>
+<text class="s" x="630" y="386" text-anchor="middle">+ security if needed</text>
+<path class="ln" d="M720,148 H730 V280 H630 V298" marker-end="url(#ah)"/>
+<text class="lbl" x="640" y="292">queue empty</text>
+
+<!-- Finish -->
+<rect class="box human" x="750" y="300" width="130" height="44" rx="8"/>
+<text class="t" x="815" y="320" text-anchor="middle">finish branch</text>
+<text class="s" x="815" y="335" text-anchor="middle">you merge to main</text>
+<rect class="box addon" x="750" y="372" width="130" height="44" rx="8"/>
+<text class="t" x="815" y="392" text-anchor="middle">graphify update</text>
+<text class="s" x="815" y="407" text-anchor="middle">commit graphify-out/</text>
+<path class="ln" d="M720,322 H748" marker-end="url(#ah)"/>
+<path class="ln" d="M815,344 V370" marker-end="url(#ah)"/>
+
+<!-- Shared state + dashboard -->
+<rect class="box" x="230" y="330" width="280" height="44" rx="8"/>
+<text class="t" x="370" y="350" text-anchor="middle">Per-ticket state files</text>
+<text class="s" x="370" y="365" text-anchor="middle">written by EW hooks · SDD and factory alike</text>
+<path class="ln" d="M370,296 V328" marker-end="url(#ah)"/>
+<rect class="box addon" x="230" y="396" width="280" height="44" rx="8"/>
+<text class="t" x="370" y="416" text-anchor="middle">ew-flightdeck dashboard</text>
+<text class="s" x="370" y="431" text-anchor="middle">tickets · architect · main · last prompt</text>
+<path class="ln" d="M370,374 V394" marker-end="url(#ah)"/>
+
+<!-- Add-ons -->
+<rect class="box addon" x="20" y="290" width="180" height="150" rx="8"/>
+<text class="t" x="110" y="310" text-anchor="middle">workflow.py addon</text>
+<text class="s" x="110" y="326" text-anchor="middle">pinned · used only if installed</text>
+<text class="a" x="110" y="345" text-anchor="middle">graphify</text>
+<text class="a" x="110" y="361" text-anchor="middle">multi-model-review</text>
+<text class="a" x="110" y="377" text-anchor="middle">codebase-explainer</text>
+<text class="a" x="110" y="393" text-anchor="middle">design-genius</text>
+<text class="a" x="110" y="409" text-anchor="middle">ew-flightdeck</text>
+<text class="s" x="110" y="430" text-anchor="middle">workflow.py pack: per project</text>
+
+<!-- Legend -->
+<g transform="translate(20,468)">
+<rect class="box human" width="14" height="14" rx="3"/><text class="s" x="20" y="11">you decide</text>
+<rect class="box agent" x="110" width="14" height="14" rx="3"/><text class="s" x="130" y="11">agents</text>
+<rect class="box orca" x="200" width="14" height="14" rx="3"/><text class="s" x="220" y="11">Orca factory</text>
+<rect class="box addon" x="310" width="14" height="14" rx="3"/><text class="a" x="330" y="11">add-on (amber text = routed add-on skill)</text>
+</g>
+</svg>
