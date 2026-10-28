@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en" data-lavish-annotate="on">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Factory Mode Design</title>
+<style>
+:root{
+  --bg:#f7f6f2; --panel:#ffffff; --ink:#1d1d1b; --muted:#6b6a63; --line:#dcdad2;
+  --human:#2f6fdb; --human-bg:#e7efff; --agent:#1f8a5b; --agent-bg:#e3f4ec;
+  --orca:#8a4fd1; --orca-bg:#f1e8fc; --warn:#c26a00; --warn-bg:#fff1dc; --stop:#c23b3b;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#151513; --panel:#1f1f1c; --ink:#ecebe6; --muted:#a3a198; --line:#3a3934;
+    --human:#7aa7ff; --human-bg:#1d2a44; --agent:#5fd19c; --agent-bg:#173126;
+    --orca:#c39bff; --orca-bg:#2c2140; --warn:#ffb456; --warn-bg:#3a2a12; --stop:#ff7b7b;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#151513; --panel:#1f1f1c; --ink:#ecebe6; --muted:#a3a198; --line:#3a3934;
+  --human:#7aa7ff; --human-bg:#1d2a44; --agent:#5fd19c; --agent-bg:#173126;
+  --orca:#c39bff; --orca-bg:#2c2140; --warn:#ffb456; --warn-bg:#3a2a12; --stop:#ff7b7b;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif}
+main{max-width:1040px;margin:0 auto;padding:28px 16px 64px}
+h1{font-size:28px;margin:0 0 4px;letter-spacing:-.01em}
+h2{font-size:19px;margin:36px 0 10px}
+h3{font-size:15px;margin:0 0 6px}
+p{margin:6px 0}
+.sub{color:var(--muted)}
+.pill{display:inline-block;font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted);margin-right:6px}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr))}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}
+.card.h{border-left:4px solid var(--human)} .card.a{border-left:4px solid var(--agent)} .card.o{border-left:4px solid var(--orca)} .card.w{border-left:4px solid var(--warn)}
+code,.mono{font-family:var(--mono);font-size:12.5px}
+code{background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:0 4px;overflow-wrap:anywhere}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.5;margin:8px 0}
+table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);background:var(--bg)}
+tr:last-child td{border-bottom:0}
+.tablewrap{overflow-x:auto}
+.same{color:var(--muted)} .new{color:var(--orca);font-weight:600}
+svg{width:100%;height:auto;display:block}
+svg text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:var(--ink)}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--muted);margin:6px 0 0}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px;background:var(--c)}
+.cmd{display:grid;grid-template-columns:minmax(0,190px) minmax(0,1fr);gap:4px 14px;align-items:baseline}
+.cmd .mono{color:var(--orca);font-weight:600}
+form.q{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin:10px 0}
+form.q label{display:block;padding:5px 0;cursor:pointer}
+form.q .rec{font-size:11px;color:var(--agent);font-weight:700;margin-left:6px}
+button{font:inherit;padding:7px 14px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer}
+button.primary{background:var(--human);border-color:var(--human);color:#fff}
+.note{background:var(--warn-bg);border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:8px;padding:10px 12px}
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <span class="pill">Proposal · nothing built</span><span class="pill">engineering-workflow v0.2.2 → v0.3.0</span><span class="pill">Orca 1.4.238</span>
+  <h1>Factory mode</h1>
+  <p class="sub">Same planning front half. After tickets are approved, the workflow offers to install a factory: an Orca automation that keeps building ready tickets in parallel until you pause it.</p>
+</header>
+
+<h2 id="flow">The whole flow</h2>
+<svg viewBox="0 0 1000 400" role="img" aria-labelledby="flowTitle">
+  <title id="flowTitle">Planning stays human-led; factory loop runs on Orca; finish stays human</title>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker>
+  </defs>
+  <!-- planning lane -->
+  <rect x="10" y="20" width="230" height="360" rx="12" fill="var(--human-bg)" stroke="var(--human)" stroke-opacity=".4"/>
+  <text x="26" y="46" font-weight="700" font-size="14" style="fill:var(--human)">1 · Plan (unchanged)</text>
+  <g id="n-grill"><title>Grill or Wayfinder</title><rect x="30" y="64" width="190" height="44" rx="8" fill="var(--panel)" stroke="var(--line)"/><text x="125" y="91" text-anchor="middle" font-size="13">grill / Wayfinder</text></g>
+  <g id="n-spec"><title>to-spec</title><rect x="30" y="128" width="190" height="44" rx="8" fill="var(--panel)" stroke="var(--line)"/><text x="125" y="155" text-anchor="middle" font-size="13">/to-spec</text></g>
+  <g id="n-tickets"><title>to-tickets, approved by you</title><rect x="30" y="192" width="190" height="44" rx="8" fill="var(--panel)" stroke="var(--line)"/><text x="125" y="219" text-anchor="middle" font-size="13">/to-tickets (you approve)</text></g>
+  <g id="n-prompt"><title>New: install prompt</title><rect x="30" y="268" width="190" height="88" rx="8" fill="var(--orca-bg)" stroke="var(--orca)"/><text x="125" y="292" text-anchor="middle" font-size="13" font-weight="700" style="fill:var(--orca)">Install prompt (new)</text><text x="125" y="312" text-anchor="middle" font-size="12">Build here · Install + run</text><text x="125" y="330" text-anchor="middle" font-size="12">Install paused · One cycle</text></g>
+  <line x1="125" y1="108" x2="125" y2="126" stroke="var(--muted)" marker-end="url(#ar)"/>
+  <line x1="125" y1="172" x2="125" y2="190" stroke="var(--muted)" marker-end="url(#ar)"/>
+  <line x1="125" y1="236" x2="125" y2="266" stroke="var(--muted)" marker-end="url(#ar)"/>
+
+  <!-- factory lane -->
+  <rect x="270" y="20" width="500" height="360" rx="12" fill="var(--orca-bg)" stroke="var(--orca)" stroke-opacity=".4"/>
+  <text x="286" y="46" font-weight="700" font-size="14" style="fill:var(--orca)">2 · Factory loop (Orca)</text>
+  <g id="n-heart"><title>Orca automation heartbeat, hourly</title><rect x="290" y="64" width="140" height="44" rx="8" fill="var(--panel)" stroke="var(--orca)"/><text x="360" y="84" text-anchor="middle" font-size="12.5">heartbeat</text><text x="360" y="100" text-anchor="middle" font-size="11" fill="var(--muted)" style="fill:var(--muted)">orca automation</text></g>
+  <g id="n-pre"><title>Precheck reads factory.json; skip costs nothing</title><rect x="460" y="64" width="140" height="44" rx="8" fill="var(--panel)" stroke="var(--orca)"/><text x="530" y="84" text-anchor="middle" font-size="12.5">precheck</text><text x="530" y="100" text-anchor="middle" font-size="11" style="fill:var(--muted)">running? ready work?</text></g>
+  <g id="n-ctl"><title>Controller: fresh session, ew-factory skill (SDD + Orca)</title><rect x="630" y="64" width="124" height="44" rx="8" fill="var(--agent-bg)" stroke="var(--agent)"/><text x="692" y="84" text-anchor="middle" font-size="12.5">controller</text><text x="692" y="100" text-anchor="middle" font-size="11" style="fill:var(--muted)">ew-factory, Opus</text></g>
+  <line x1="430" y1="86" x2="458" y2="86" stroke="var(--muted)" marker-end="url(#ar)"/>
+  <line x1="600" y1="86" x2="628" y2="86" stroke="var(--muted)" marker-end="url(#ar)"/>
+  <!-- workers -->
+  <g id="n-workers"><title>One Orca worktree per ready ticket, up to concurrency</title>
+    <rect x="300" y="140" width="300" height="104" rx="10" fill="none" stroke="var(--agent)" stroke-dasharray="5 4"/>
+    <text x="312" y="160" font-size="12" style="fill:var(--agent)" font-weight="700">workers in parallel (≤ 3)</text>
+    <rect x="312" y="170" width="88" height="62" rx="7" fill="var(--panel)" stroke="var(--line)"/><text x="356" y="194" text-anchor="middle" font-size="12">T-04</text><text x="356" y="212" text-anchor="middle" font-size="10.5" style="fill:var(--muted)">implement</text>
+    <rect x="406" y="170" width="88" height="62" rx="7" fill="var(--panel)" stroke="var(--line)"/><text x="450" y="194" text-anchor="middle" font-size="12">T-05</text><text x="450" y="212" text-anchor="middle" font-size="10.5" style="fill:var(--muted)">review</text>
+    <rect x="500" y="170" width="88" height="62" rx="7" fill="var(--panel)" stroke="var(--line)"/><text x="544" y="194" text-anchor="middle" font-size="12">T-07</text><text x="544" y="212" text-anchor="middle" font-size="10.5" style="fill:var(--muted)">fix (1 round)</text>
+  </g>
+  <path d="M692 108 L692 125 L450 125 L450 138" fill="none" stroke="var(--muted)" marker-end="url(#ar)"/>
+  <g id="n-merge"><title>Merge approved tickets into integration branch, never main</title><rect x="630" y="160" width="124" height="64" rx="8" fill="var(--panel)" stroke="var(--agent)"/><text x="692" y="186" text-anchor="middle" font-size="12.5">merge</text><text x="692" y="204" text-anchor="middle" font-size="11" style="fill:var(--muted)">integration branch</text></g>
+  <line x1="600" y1="192" x2="628" y2="192" stroke="var(--muted)" marker-end="url(#ar)"/>
+  <g id="n-ledger"><title>Ledger, STATUS.md, Orca cards updated each cycle</title><rect x="630" y="262" width="124" height="64" rx="8" fill="var(--panel)" stroke="var(--line)"/><text x="692" y="288" text-anchor="middle" font-size="12.5">ledger + digest</text><text x="692" y="306" text-anchor="middle" font-size="11" style="fill:var(--muted)">STATUS.md, cards</text></g>
+  <line x1="692" y1="224" x2="692" y2="260" stroke="var(--muted)" marker-end="url(#ar)"/>
+  <path d="M630 294 L290 294 L290 120 L330 108" fill="none" stroke="var(--muted)" stroke-dasharray="4 4" marker-end="url(#ar)"/>
+  <text x="300" y="286" font-size="11" style="fill:var(--muted)">next cycle (newly unblocked tickets)</text>
+  <g id="n-gate"><title>Second failed review or blocker: Orca gate + unread dot</title><rect x="300" y="316" width="300" height="44" rx="8" fill="var(--warn-bg)" stroke="var(--warn)"/><text x="450" y="343" text-anchor="middle" font-size="12.5">Needs you: Orca gate + unread dot</text></g>
+  <line x1="450" y1="244" x2="450" y2="314" stroke="var(--warn)" stroke-dasharray="3 3" marker-end="url(#ar)"/>
+
+  <!-- finish lane -->
+  <rect x="800" y="20" width="190" height="360" rx="12" fill="var(--human-bg)" stroke="var(--human)" stroke-opacity=".4"/>
+  <text x="816" y="46" font-weight="700" font-size="14" style="fill:var(--human)">3 · Finish (human)</text>
+  <g id="n-final"><title>Queue empty: final review runs, factory pauses itself</title><rect x="815" y="64" width="160" height="64" rx="8" fill="var(--panel)" stroke="var(--line)"/><text x="895" y="90" text-anchor="middle" font-size="12.5">final review</text><text x="895" y="108" text-anchor="middle" font-size="11" style="fill:var(--muted)">then auto-pause</text></g>
+  <g id="n-main"><title>You decide what reaches main</title><rect x="815" y="160" width="160" height="64" rx="8" fill="var(--panel)" stroke="var(--human)"/><text x="895" y="186" text-anchor="middle" font-size="12.5">finish branch</text><text x="895" y="204" text-anchor="middle" font-size="11" style="fill:var(--muted)">you merge to main</text></g>
+  <line x1="895" y1="128" x2="895" y2="158" stroke="var(--muted)" marker-end="url(#ar)"/>
+  <path d="M754 86 L800 86 L813 96" fill="none" stroke="var(--muted)" stroke-dasharray="4 4" marker-end="url(#ar)"/>
+  <text x="760" y="78" font-size="10.5" style="fill:var(--muted)">queue empty</text>
+  <path d="M220 312 L250 312 L250 86 L288 86" fill="none" stroke="var(--orca)" marker-end="url(#ar)"/>
+</svg>
+<div class="legend"><span style="--c:var(--human)">you</span><span style="--c:var(--orca)">Orca plumbing (new)</span><span style="--c:var(--agent)">agents (existing SDD rules)</span><span style="--c:var(--warn)">needs you</span></div>
+
+<h2 id="controls">Your four controls</h2>
+<div class="grid">
+  <div class="card o"><h3>Install</h3><p>Creates one Orca automation and <code>factory.json</code>. Offered after <code>/to-tickets</code> is approved.</p><pre>factory install</pre></div>
+  <div class="card o"><h3>Pause</h3><p><b>Drain</b>: nothing new starts; in-flight tickets finish, then pause.<br><b>Stop</b>: interrupts mid-ticket; work stays and resumes from the ledger.</p><pre>factory pause [--now]</pre></div>
+  <div class="card o"><h3>Resume</h3><p>Runs until the queue is empty, then final review, then pauses itself.</p><pre>factory resume</pre></div>
+  <div class="card o"><h3>One cycle, then pause</h3><p>Runs one wave now (every ticket ready right now), then sets itself back to paused.</p><pre>factory cycle</pre></div>
+</div>
+<p class="sub" style="margin-top:8px">Disabling the automation in Orca's UI is also a hard pause. Every session start in that repo prints one line: <code>factory: paused · 4 ready · 1 needs you</code>.</p>
+
+<h2 id="states">Factory modes</h2>
+<svg viewBox="0 0 1000 190" role="img" aria-labelledby="stTitle">
+  <title id="stTitle">Mode transitions in factory.json</title>
+  <defs><marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker></defs>
+  <g id="s-paused"><title>paused: precheck skips every heartbeat</title><rect x="40" y="70" width="150" height="50" rx="25" fill="var(--panel)" stroke="var(--human)" stroke-width="2"/><text x="115" y="100" text-anchor="middle" font-size="14" font-weight="700">paused</text></g>
+  <g id="s-running"><title>running: heartbeat starts a cycle when work is ready</title><rect x="420" y="10" width="150" height="50" rx="25" fill="var(--panel)" stroke="var(--agent)" stroke-width="2"/><text x="495" y="40" text-anchor="middle" font-size="14" font-weight="700">running</text></g>
+  <g id="s-once"><title>once: exactly one wave, then paused</title><rect x="420" y="130" width="150" height="50" rx="25" fill="var(--panel)" stroke="var(--orca)" stroke-width="2"/><text x="495" y="160" text-anchor="middle" font-size="14" font-weight="700">once</text></g>
+  <g id="s-drain"><title>draining: no new tickets, in-flight finish</title><rect x="800" y="70" width="150" height="50" rx="25" fill="var(--panel)" stroke="var(--warn)" stroke-width="2"/><text x="875" y="100" text-anchor="middle" font-size="14" font-weight="700">draining</text></g>
+  <path d="M190 85 Q300 30 418 35" fill="none" stroke="var(--muted)" marker-end="url(#ar2)"/><text x="250" y="42" font-size="12" style="fill:var(--muted)">resume</text>
+  <path d="M190 105 Q300 160 418 155" fill="none" stroke="var(--muted)" marker-end="url(#ar2)"/><text x="262" y="168" font-size="12" style="fill:var(--muted)">cycle</text>
+  <text x="115" y="150" text-anchor="middle" font-size="12" style="fill:var(--stop)">pause --now: any mode → paused</text>
+  <text x="115" y="166" text-anchor="middle" font-size="11" style="fill:var(--muted)">tickets marked interrupted</text>
+  <path d="M570 35 Q700 30 798 85" fill="none" stroke="var(--muted)" marker-end="url(#ar2)"/><text x="640" y="36" font-size="12" style="fill:var(--muted)">pause (drain) · queue empty · cap hit</text>
+  <path d="M570 155 Q700 160 798 105" fill="none" stroke="var(--muted)" marker-end="url(#ar2)"/><text x="650" y="172" font-size="12" style="fill:var(--muted)">wave done · pause</text>
+  <path d="M800 95 L192 95" fill="none" stroke="var(--muted)" stroke-dasharray="5 4" marker-end="url(#ar2)"/><text x="470" y="89" text-anchor="middle" font-size="12" style="fill:var(--muted)">drained: in-flight tickets finished</text>
+</svg>
+
+<h2 id="same">What changes, what doesn't</h2>
+<div class="tablewrap"><table>
+  <tr><th>Step</th><th>Today</th><th>Factory mode</th></tr>
+  <tr><td>Plan</td><td>grill / Wayfinder → to-spec → to-tickets</td><td class="same">unchanged, always you</td></tr>
+  <tr><td>Build</td><td>SDD in one chat, subagents</td><td class="new">SDD controller as an Orca automation; workers are Orca worktrees</td></tr>
+  <tr><td>Ticket review</td><td>1 implementer, 1 Sonnet reviewer, ≤1 fix round</td><td class="same">unchanged</td></tr>
+  <tr><td>Second failed review</td><td>escalate in chat</td><td class="new">Orca decision gate + unread dot</td></tr>
+  <tr><td>Merge</td><td>into integration branch</td><td class="same">unchanged; never main</td></tr>
+  <tr><td>Final review</td><td>code-review + ponytail-review (+ security)</td><td class="new">runs when the queue empties, then auto-pause</td></tr>
+  <tr><td>Finish branch</td><td>finishing-a-development-branch</td><td class="same">still you; no deploys</td></tr>
+</table></div>
+
+<h2 id="orca">How it maps onto Orca</h2>
+<div class="card">
+<div class="cmd">
+  <span class="mono">orca automations create</span><span>The heartbeat. <code>--trigger hourly</code>, <code>--precheck "…factory precheck"</code>, <code>--provider claude</code>, <code>--base-branch &lt;integration&gt;</code>, <code>--extra-agent-args="--model opus"</code>. A failed precheck records a skipped run and spends nothing.</span>
+  <span class="mono">orca automations run</span><span>What <code>factory cycle</code> calls after setting mode <code>once</code>.</span>
+  <span class="mono">orca worktree create --agent</span><span>One per ready ticket, <code>--parent-worktree</code> = integration worktree, so tickets nest under it in the sidebar.</span>
+  <span class="mono">orca worktree set</span><span><code>--workspace-status</code> in-progress / in-review / completed, plus a one-line <code>--comment</code>. The sidebar becomes the dashboard.</span>
+  <span class="mono">orca orchestration gate-create</span><span>Needs-you items, with <code>--unread</code> on the card.</span>
+  <span class="mono">orca orchestration worker-stop</span><span>Used only by <code>pause --now</code>.</span>
+</div>
+</div>
+<p class="sub">Checked against <code>orca automations create --help</code> and the orca-cli guide on this machine (Orca 1.4.238). Not yet run.</p>
+
+<h2 id="rails">Guard rails</h2>
+<div class="grid">
+  <div class="card w"><h3>Never</h3><p>Merges or pushes to main, deploys, publishes issues, or uses bypass permissions. Install refuses if unattended runs would need bypass mode.</p></div>
+  <div class="card w"><h3>Spend</h3><p>Same token budget as today. Adds <code>daily_ticket_cap</code> (default 10) and concurrency 3. Hitting the cap drains and pauses.</p></div>
+  <div class="card w"><h3>Memory</h3><p>Fresh controller session each cycle. State lives in the ledger and <code>factory.json</code>, so nothing depends on chat history.</p></div>
+</div>
+
+<h2 id="later">Later, not v1</h2>
+<div class="grid">
+  <div class="card"><h3>v2</h3><p>Post-merge verifier on the integration tip. Stale-ticket requeue. CI shepherd for the integration → main PR.</p></div>
+  <div class="card"><h3>v3</h3><p>Operate stations (incident-response, perf watch). Feedback → draft tickets you approve. Risk-tiered auto-merge to main.</p></div>
+  <div class="card"><h3>Cross-project</h3><p>One Needs-you view across every factory on this Orca host (CodeAF's best idea).</p></div>
+</div>
+
+<h2 id="decided">Decided 2026-10-27</h2>
+<div class="tablewrap"><table>
+  <tr><th>Question</th><th>Decision</th></tr>
+  <tr><td>Pause</td><td>Two kinds: <b>drain</b> at a ticket boundary, <b>stop</b> mid-ticket (resumes later from the ledger)</td></tr>
+  <tr><td>Heartbeat</td><td>Hourly Orca automation with precheck</td></tr>
+  <tr><td>Concurrency</td><td>3</td></tr>
+  <tr><td>Home</td><td>engineering-workflow repo: <code>ew-factory</code> skill + <code>workflow.py factory</code>, v0.3.0</td></tr>
+  <tr><td>One cycle</td><td>One wave (default kept; your answer covered pause, not cycle size)</td></tr>
+</table></div>
+<p class="note" style="margin-top:24px">Not verified yet: whether Orca automations can run Claude unattended in your current permission mode on this host. That is the first thing v1 has to test.</p>
+</main>
+</body>
+</html>
