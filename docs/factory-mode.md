@@ -40,7 +40,7 @@ integration branch, never main; one queue across projects; spend caps.
 - `workflow.py factory install|status|pause|resume|cycle|uninstall` (new subcommand).
 - State file `.engineering-workflow/factory.json` (gitignored, local to the host):
   `mode` (`running|paused|once|draining`), `concurrency`, `daily_ticket_cap`,
-  `automation_id`, `integration_branch`, `last_cycle`.
+  `max_turns`, `max_minutes`, `automation_id`, `integration_branch`, `last_cycle`.
 - One Orca automation, the heartbeat:
   `orca automations create --name "factory:<project>" --trigger hourly
    --provider claude --repo id:<repoId> --base-branch <integration>
@@ -56,6 +56,43 @@ integration branch, never main; one queue across projects; spend caps.
 - Orca cards as the dashboard: each ticket worktree gets `--workspace-status`
   (in-progress / in-review / completed) and a one-line `--comment`. Needs-Human =
   `orca orchestration gate-create` + `worktree set --unread`.
+
+## Turn cap (per ticket)
+
+A stuck agent can loop on one failure for hours and burn the subscription. Each
+ticket gets a hard limit; hitting it stops the worker and sends the ticket to
+Needs-Human with the last failing output.
+
+- `max_turns` (default 100): agent turns per ticket, implementer and fix round
+  together. Counted by the workflow's existing PostToolUse hook, which increments a
+  per-ticket counter in the ledger when `EW_FACTORY_TICKET` is set in the worker's
+  environment. At the cap the hook tells the agent to stop and report BLOCKED.
+- `max_minutes` (default 90): wall-clock backstop enforced by the controller with
+  `orca orchestration worker-stop`, for agents that never reach a hook.
+- A capped ticket is marked `capped` (not `failed`); its worktree stays. The digest
+  asks one question for it: what factory change (skill, CLAUDE.md rule, ticket shape)
+  would have prevented this? That answer goes to the Idea Shelf, not into a retry.
+
+Orca has no built-in turn limit (`worker-start` only has `--timeout-ms` for waiting),
+so the hook does the counting.
+
+## Blast radius (ticket field)
+
+`/to-tickets` adds `blast_radius: low | medium | high` to each ticket, and you approve
+it along with the tickets.
+
+| Radius | Touches |
+|---|---|
+| low | one component or module inside one service, no shared code |
+| medium | shared code inside one service, or a public interface other code calls |
+| high | database schema or data, auth, payments, secrets, the design system, or more than one service |
+
+v1 uses it two ways:
+- `high` tickets stop at Needs-Human after review passes; you approve the merge into
+  the integration branch. `low` and `medium` merge after review, as today.
+- The Orca card comment and the digest show it, so you can see what is risky.
+
+v3 risk-tiered auto-merge to main reads the same field; nothing new is needed then.
 
 ## One cycle
 
@@ -96,6 +133,19 @@ sets mode back to `paused` when the wave ends. "Run until the queue is empty" is
 - v3: operate stations (incident-response on errors, perf watch), feedback → draft
   tickets that wait for human approval, risk-tiered auto-merge to main.
 - Cross-project queue: one Orca view of Needs-Human across every factory.
+- From theSeniorDev's software-factory video (2026-10-12): deterministic quality
+  gates fed back to the implementer (lint, types, duplication, complexity, dead
+  code); before/after screenshots in Orca's browser; smoke-test subset plus a QA
+  agent that acts as a user; intake agents (triage from Sentry/Slack, refinement
+  with repro evidence, prioritizer); anonymized production-like seed data;
+  bug-cluster review that points at architecture; strip issue-reference comments.
+
+## Decisions (2026-10-28)
+
+- Per-ticket turn cap: 100 turns (hook-counted) plus a 90-minute wall-clock backstop;
+  capped tickets go to Needs-Human with a "what factory change prevents this?" note.
+- Tickets carry `blast_radius` (low / medium / high). In v1, `high` tickets need your
+  approval before merging into the integration branch.
 
 ## Decisions (2026-10-27)
 
@@ -111,3 +161,5 @@ sets mode back to `paused` when the wave ends. "Run until the queue is empty" is
 
 - Whether Orca automations can run Claude unattended in this host's permission mode.
   First v1 task.
+- Whether Claude agents launched by Orca run the workflow's PostToolUse hook (needed
+  for the turn count). Same spike.

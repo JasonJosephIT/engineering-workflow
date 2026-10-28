@@ -131,6 +131,18 @@ button.primary{background:var(--human);border-color:var(--human);color:#fff}
 </div>
 <p class="sub" style="margin-top:8px">Disabling the automation in Orca's UI is also a hard pause. Every session start in that repo prints one line: <code>factory: paused · 4 ready · 1 needs you</code>.</p>
 
+<h2 id="limits">Per-ticket limits (new)</h2>
+<div class="grid">
+  <div class="card w"><h3>Turn cap</h3><p><b>100 turns</b> per ticket (implementer + fix round), counted by the workflow's PostToolUse hook when <code>EW_FACTORY_TICKET</code> is set. <b>90 minutes</b> wall-clock backstop via <code>worker-stop</code>.</p><p>A capped ticket goes to Needs you with its last failing output, plus one question: what factory change would have prevented this? The answer goes to the Idea Shelf.</p></div>
+  <div class="card w"><h3>Blast radius</h3><p><code>/to-tickets</code> tags each ticket <code>low</code> / <code>medium</code> / <code>high</code>; you approve it with the tickets.</p><p><b>high</b> tickets stop at Needs you after review passes: you approve the merge into the integration branch. Shown on the Orca card and in the digest. v3 auto-merge reads the same field.</p></div>
+</div>
+<div class="tablewrap" style="margin-top:12px"><table>
+  <tr><th>Radius</th><th>Touches</th></tr>
+  <tr><td>low</td><td>one component or module inside one service, no shared code</td></tr>
+  <tr><td>medium</td><td>shared code inside one service, or a public interface other code calls</td></tr>
+  <tr><td>high</td><td>database schema or data, auth, payments, secrets, the design system, or more than one service</td></tr>
+</table></div>
+
 <h2 id="states">Factory modes</h2>
 <svg viewBox="0 0 1000 190" role="img" aria-labelledby="stTitle">
   <title id="stTitle">Mode transitions in factory.json</title>
@@ -155,6 +167,8 @@ button.primary{background:var(--human);border-color:var(--human);color:#fff}
   <tr><td>Build</td><td>SDD in one chat, subagents</td><td class="new">SDD controller as an Orca automation; workers are Orca worktrees</td></tr>
   <tr><td>Ticket review</td><td>1 implementer, 1 Sonnet reviewer, ≤1 fix round</td><td class="same">unchanged</td></tr>
   <tr><td>Second failed review</td><td>escalate in chat</td><td class="new">Orca decision gate + unread dot</td></tr>
+  <tr><td>Runaway agent</td><td>no limit</td><td class="new">100 turns / 90 min, then Needs you</td></tr>
+  <tr><td>Risky ticket</td><td>no marker</td><td class="new"><code>blast_radius</code>; <b>high</b> needs your OK to merge</td></tr>
   <tr><td>Merge</td><td>into integration branch</td><td class="same">unchanged; never main</td></tr>
   <tr><td>Final review</td><td>code-review + ponytail-review (+ security)</td><td class="new">runs when the queue empties, then auto-pause</td></tr>
   <tr><td>Finish branch</td><td>finishing-a-development-branch</td><td class="same">still you; no deploys</td></tr>
@@ -185,18 +199,21 @@ button.primary{background:var(--human);border-color:var(--human);color:#fff}
   <div class="card"><h3>v2</h3><p>Post-merge verifier on the integration tip. Stale-ticket requeue. CI shepherd for the integration → main PR.</p></div>
   <div class="card"><h3>v3</h3><p>Operate stations (incident-response, perf watch). Feedback → draft tickets you approve. Risk-tiered auto-merge to main.</p></div>
   <div class="card"><h3>Cross-project</h3><p>One Needs-you view across every factory on this Orca host (CodeAF's best idea).</p></div>
+  <div class="card"><h3>From the SeniorDev video</h3><p>Deterministic gates fed back to the implementer (lint, types, duplication, complexity, dead code). Before/after screenshots. Smoke subset + QA agent. Intake agents. Anonymized seed data. Bug-cluster architecture review.</p></div>
 </div>
 
-<h2 id="decided">Decided 2026-10-27</h2>
+<h2 id="decided">Decided</h2>
 <div class="tablewrap"><table>
   <tr><th>Question</th><th>Decision</th></tr>
+  <tr><td>Turn cap (10-28)</td><td>100 turns, hook-counted, plus a 90-min backstop; capped → Needs you</td></tr>
+  <tr><td>Blast radius (10-28)</td><td>Ticket field low / medium / high; <b>high</b> needs your OK to merge into integration</td></tr>
   <tr><td>Pause</td><td>Two kinds: <b>drain</b> at a ticket boundary, <b>stop</b> mid-ticket (resumes later from the ledger)</td></tr>
   <tr><td>Heartbeat</td><td>Hourly Orca automation with precheck</td></tr>
   <tr><td>Concurrency</td><td>3</td></tr>
   <tr><td>Home</td><td>engineering-workflow repo: <code>ew-factory</code> skill + <code>workflow.py factory</code>, v0.3.0</td></tr>
   <tr><td>One cycle</td><td>One wave (default kept; your answer covered pause, not cycle size)</td></tr>
 </table></div>
-<p class="note" style="margin-top:24px">Not verified yet: whether Orca automations can run Claude unattended in your current permission mode on this host. That is the first thing v1 has to test.</p>
+<p class="note" style="margin-top:24px">Not verified yet: whether Orca automations can run Claude unattended in your current permission mode on this host. That is the first thing v1 has to test, along with whether those agents run the workflow's PostToolUse hook (needed for the turn count).</p>
 </main>
 </body>
 </html>
