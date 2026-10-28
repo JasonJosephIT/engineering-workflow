@@ -67,6 +67,16 @@ Ticket source: EW hooks write one small JSON state file per active ticket into E
 local state folder (outside any repo); the mod reads them on a timer. Factory mode's
 tickets use the same files.
 
+## How it ties to factory mode
+
+![How factory mode and skill routing fit together](ew-map.svg)
+
+Factory mode (`docs/factory-mode.md`, v0.3.0) runs the same build and review stages
+unattended on Orca. Routing applies inside it unchanged: graphify context packs and
+`design-director` in workers, multi-model-review as the final review (Orca is always
+there), and the per-ticket state files feed `ew-flightdeck` for both SDD and factory
+tickets.
+
 ## Not decided here (spec details)
 
 - How each add-on is fetched (git tag vs package manager) and pinned.

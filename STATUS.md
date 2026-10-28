@@ -12,7 +12,9 @@ updated: 2026-10-28
 Designing factory mode (v0.3.0): an opt-in, Orca-hosted loop that keeps building
 approved tickets in parallel after `/to-tickets`, with install / pause (drain or stop)
 / resume / one-cycle controls. Design draft: `docs/factory-mode.md` (+ `.html`).
-Branch: `feature/factory-mode`. Nothing built yet.
+Skill routing, add-ons and the `ew-flightdeck` dashboard are designed to ship right
+after it (`docs/skill-routing.md`). `docs/ew-map.svg` shows how both fit the workflow.
+Both designs are merged to main; nothing built yet.
 
 ## Next
 
@@ -25,6 +27,10 @@ Branch: `feature/factory-mode`. Nothing built yet.
 
 ## Decisions
 
+- 2026-10-28: Factory mode and skill routing are one plan: the factory's final review
+  is multi-model-review (it always runs on Orca), its workers use the routed skills,
+  and its hooks write the same ticket state files `ew-flightdeck` reads. Both designs
+  merged to main together.
 - 2026-10-28: design-genius (`JasonJosephIT/design-genius`) is an EW add-on and the
   one global design skill; it replaces frontend-team, which is removed. EW routes any
   spec or ticket that changes UI to `design-director`, and runs its `critique` at

@@ -25,7 +25,7 @@ integration branch, never main; one queue across projects; spend caps.
 | Per-ticket review | 1 implementer, 1 Sonnet reviewer, ≤1 fix round | unchanged |
 | Second failed review | escalate to controller/human in chat | Orca decision gate + unread dot ("Needs you") |
 | Merge | into integration branch | unchanged; never main |
-| Final review | code-review + ponytail-review (+ security) | runs when the queue empties, then the factory pauses itself |
+| Final review | code-review + ponytail-review (+ security) | runs when the queue empties, then the factory pauses itself; on Orca this is multi-model-review (see skill routing) |
 | Finish branch | finishing-a-development-branch | still human: the factory never merges to main or deploys |
 
 ## Where the install prompt appears
@@ -56,6 +56,23 @@ integration branch, never main; one queue across projects; spend caps.
 - Orca cards as the dashboard: each ticket worktree gets `--workspace-status`
   (in-progress / in-review / completed) and a one-line `--comment`. Needs-Human =
   `orca orchestration gate-create` + `worktree set --unread`.
+
+## How it ties to skill routing
+
+![How factory mode and skill routing fit together](ew-map.svg)
+
+Skill routing (`docs/skill-routing.md`) ships right after this and plugs into the same
+loop. The factory needs none of it to work; each piece is used only when installed.
+
+- Workers start their context pack from graphify, and UI tickets go through
+  design-genius `design-director`.
+- The factory always runs on Orca, so its final review is multi-model-review
+  (replacing code-review + ponytail-review), plus `critique` when UI changed.
+- The factory's hooks write the same per-ticket state files as SDD, so
+  `ew-flightdeck` shows factory tickets next to in-chat ones. Orca cards stay the
+  Needs-Human surface.
+- `blast_radius: high` already covers the design system; those tickets also get
+  `critique` before you approve the merge.
 
 ## Turn cap (per ticket)
 
