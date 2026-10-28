@@ -27,6 +27,21 @@ Both designs are merged to main; nothing built yet.
 
 ## Decisions
 
+- 2026-10-28: Factory loop is owned by code (from Super Simple Software Factory):
+  `workflow.py factory tick` (Python, idempotent, lock file) does sequencing, caps,
+  merges and mode changes. The LLM controller is dropped; `ew-factory` becomes the
+  one-ticket worker brief; the hourly heartbeat agent only runs `tick` on a cheap
+  model. Workers end with `factory report`, which runs `tick`.
+- 2026-10-28: Branch claims (from addyosmani/factory): `tick` claims a ticket by
+  creating `factory/<ticket-id>`; an existing branch means claimed. With a remote,
+  first push wins.
+- 2026-10-28: Gate script (from addyosmani/factory): per-project
+  `.engineering-workflow/gates.sh` ending in `GATES: PASS|FAIL <checks>`; a missing
+  required check is a FAIL; `tick` re-runs it before merging. The reviewer also proves
+  the new test fails without the change.
+- 2026-10-28: Review-pile back-pressure (from addyosmani/factory): `stop_if_waiting`
+  (default 5) counts gates, high-radius approvals and capped tickets; at the cap `tick`
+  starts no new tickets until the pile is cleared.
 - 2026-10-28: Factory mode and skill routing are one plan: the factory's final review
   is multi-model-review (it always runs on Orca), its workers use the routed skills,
   and its hooks write the same ticket state files `ew-flightdeck` reads. Both designs
@@ -85,6 +100,8 @@ Both designs are merged to main; nothing built yet.
 - Confirm "one cycle = one wave".
 - Unverified: whether Claude agents launched by Orca run the workflow's PostToolUse
   hook (the turn cap depends on it). Check in the same spike.
+- Unverified: whether the heartbeat accepts `--extra-agent-args="--model haiku"`, and
+  whether a worker can run `factory report` as its last step. Same spike.
 
 ## Idea Shelf
 

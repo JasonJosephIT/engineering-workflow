@@ -89,7 +89,7 @@ button.primary{background:var(--human);border-color:var(--human);color:#fff}
   <text x="286" y="46" font-weight="700" font-size="14" style="fill:var(--orca)">2 · Factory loop (Orca)</text>
   <g id="n-heart"><title>Orca automation heartbeat, hourly</title><rect x="290" y="64" width="140" height="44" rx="8" fill="var(--panel)" stroke="var(--orca)"/><text x="360" y="84" text-anchor="middle" font-size="12.5">heartbeat</text><text x="360" y="100" text-anchor="middle" font-size="11" fill="var(--muted)" style="fill:var(--muted)">orca automation</text></g>
   <g id="n-pre"><title>Precheck reads factory.json; skip costs nothing</title><rect x="460" y="64" width="140" height="44" rx="8" fill="var(--panel)" stroke="var(--orca)"/><text x="530" y="84" text-anchor="middle" font-size="12.5">precheck</text><text x="530" y="100" text-anchor="middle" font-size="11" style="fill:var(--muted)">running? ready work?</text></g>
-  <g id="n-ctl"><title>Controller: fresh session, ew-factory skill (SDD + Orca)</title><rect x="630" y="64" width="124" height="44" rx="8" fill="var(--agent-bg)" stroke="var(--agent)"/><text x="692" y="84" text-anchor="middle" font-size="12.5">controller</text><text x="692" y="100" text-anchor="middle" font-size="11" style="fill:var(--muted)">ew-factory, Opus</text></g>
+  <g id="n-ctl"><title>factory tick: plain Python owns the loop; also run when a worker reports</title><rect x="630" y="64" width="124" height="44" rx="8" fill="var(--panel)" stroke="var(--orca)"/><text x="692" y="84" text-anchor="middle" font-size="12.5">factory tick</text><text x="692" y="100" text-anchor="middle" font-size="11" style="fill:var(--muted)">Python, no LLM</text></g>
   <line x1="430" y1="86" x2="458" y2="86" stroke="var(--muted)" marker-end="url(#ar)"/>
   <line x1="600" y1="86" x2="628" y2="86" stroke="var(--muted)" marker-end="url(#ar)"/>
   <!-- workers -->
@@ -131,7 +131,24 @@ button.primary{background:var(--human);border-color:var(--human);color:#fff}
 </div>
 <p class="sub" style="margin-top:8px">Disabling the automation in Orca's UI is also a hard pause. Every session start in that repo prints one line: <code>factory: paused · 4 ready · 1 needs you</code>.</p>
 
-<h2 id="limits">Per-ticket limits (new)</h2>
+<h2 id="loop">Code owns the loop</h2>
+<p class="sub">From Super Simple Software Factory: no LLM decides what runs next, whether a ticket passed, or when to pause. Those rules run as written and cost no tokens.</p>
+<pre>heartbeat (Orca, hourly) ─┐
+worker finishes ticket ───┼─&gt; workflow.py factory tick   (Python, seconds, idempotent)
+you run cycle/resume ─────┘        │
+                                   ├─ enforce caps (minutes, turns) and stop overruns
+                                   ├─ approved tickets: re-run gates → merge, or gate if high radius
+                                   ├─ review pile ≥ stop_if_waiting? start nothing
+                                   ├─ claim + start ready tickets up to concurrency
+                                   └─ mode bookkeeping (once → paused, draining → paused)</pre>
+<div class="grid">
+  <div class="card o"><h3>Branch claims</h3><p><code>tick</code> claims a ticket by creating <code>factory/&lt;ticket-id&gt;</code> from the integration tip. It fails if the branch exists, so no ticket starts twice. With a remote, the first push wins.</p></div>
+  <div class="card o"><h3>Gate script</h3><p>Per project: <code>.engineering-workflow/gates.sh</code>, last line <code>GATES: PASS</code> or <code>GATES: FAIL &lt;checks&gt;</code>. A missing required check is a FAIL. <code>tick</code> re-runs it before merging and trusts only its own run.</p></div>
+  <div class="card o"><h3>Review-pile cap</h3><p><code>stop_if_waiting</code> = 5. When gates, high-radius approvals and capped tickets reach 5, <code>tick</code> starts nothing new: <code>held: 5 waiting on you</code>. It carries on once you clear the pile.</p></div>
+  <div class="card a"><h3>Worker brief</h3><p><code>ew-factory</code> is now one-ticket SDD: ponytail + TDD, <code>gates.sh</code>, a fresh Sonnet reviewer that proves the new test fails without the change, one fix round, then <code>factory report</code>.</p></div>
+</div>
+
+<h2 id="limits">Per-ticket limits</h2>
 <div class="grid">
   <div class="card w"><h3>Turn cap</h3><p><b>100 turns</b> per ticket (implementer + fix round), counted by the workflow's PostToolUse hook when <code>EW_FACTORY_TICKET</code> is set. <b>90 minutes</b> wall-clock backstop via <code>worker-stop</code>.</p><p>A capped ticket goes to Needs you with its last failing output, plus one question: what factory change would have prevented this? The answer goes to the Idea Shelf.</p></div>
   <div class="card w"><h3>Blast radius</h3><p><code>/to-tickets</code> tags each ticket <code>low</code> / <code>medium</code> / <code>high</code>; you approve it with the tickets.</p><p><b>high</b> tickets stop at Needs you after review passes: you approve the merge into the integration branch. Shown on the Orca card and in the digest. v3 auto-merge reads the same field.</p></div>
@@ -164,7 +181,7 @@ button.primary{background:var(--human);border-color:var(--human);color:#fff}
 <div class="tablewrap"><table>
   <tr><th>Step</th><th>Today</th><th>Factory mode</th></tr>
   <tr><td>Plan</td><td>grill / Wayfinder → to-spec → to-tickets</td><td class="same">unchanged, always you</td></tr>
-  <tr><td>Build</td><td>SDD in one chat, subagents</td><td class="new">SDD controller as an Orca automation; workers are Orca worktrees</td></tr>
+  <tr><td>Build</td><td>SDD in one chat, subagents</td><td class="new"><code>factory tick</code> (Python) runs the loop; each ticket is one Orca agent doing one-ticket SDD</td></tr>
   <tr><td>Ticket review</td><td>1 implementer, 1 Sonnet reviewer, ≤1 fix round</td><td class="same">unchanged</td></tr>
   <tr><td>Second failed review</td><td>escalate in chat</td><td class="new">Orca decision gate + unread dot</td></tr>
   <tr><td>Runaway agent</td><td>no limit</td><td class="new">100 turns / 90 min, then Needs you</td></tr>
@@ -177,8 +194,8 @@ button.primary{background:var(--human);border-color:var(--human);color:#fff}
 <h2 id="orca">How it maps onto Orca</h2>
 <div class="card">
 <div class="cmd">
-  <span class="mono">orca automations create</span><span>The heartbeat. <code>--trigger hourly</code>, <code>--precheck "…factory precheck"</code>, <code>--provider claude</code>, <code>--base-branch &lt;integration&gt;</code>, <code>--extra-agent-args="--model opus"</code>. A failed precheck records a skipped run and spends nothing.</span>
-  <span class="mono">orca automations run</span><span>What <code>factory cycle</code> calls after setting mode <code>once</code>.</span>
+  <span class="mono">orca automations create</span><span>The heartbeat. <code>--trigger hourly</code>, <code>--precheck "…factory precheck"</code>, <code>--provider claude</code>, <code>--workspace &lt;integration worktree&gt;</code>, <code>--extra-agent-args="--model haiku"</code>. The agent only runs <code>factory tick</code>. A failed precheck records a skipped run and spends nothing.</span>
+  <span class="mono">orca automations run</span><span>Optional: shows a manual run in Orca's history. <code>factory cycle</code> just sets mode <code>once</code> and runs <code>tick</code>.</span>
   <span class="mono">orca worktree create --agent</span><span>One per ready ticket, <code>--parent-worktree</code> = integration worktree, so tickets nest under it in the sidebar.</span>
   <span class="mono">orca worktree set</span><span><code>--workspace-status</code> in-progress / in-review / completed, plus a one-line <code>--comment</code>. The sidebar becomes the dashboard.</span>
   <span class="mono">orca orchestration gate-create</span><span>Needs-you items, with <code>--unread</code> on the card.</span>
@@ -191,7 +208,7 @@ button.primary{background:var(--human);border-color:var(--human);color:#fff}
 <div class="grid">
   <div class="card w"><h3>Never</h3><p>Merges or pushes to main, deploys, publishes issues, or uses bypass permissions. Install refuses if unattended runs would need bypass mode.</p></div>
   <div class="card w"><h3>Spend</h3><p>Same token budget as today. Adds <code>daily_ticket_cap</code> (default 10) and concurrency 3. Hitting the cap drains and pauses.</p></div>
-  <div class="card w"><h3>Memory</h3><p>Fresh controller session each cycle. State lives in the ledger and <code>factory.json</code>, so nothing depends on chat history.</p></div>
+  <div class="card w"><h3>Memory</h3><p>No long-lived agent: <code>tick</code> is code and each ticket worker is fresh. State lives in the ledger and <code>factory.json</code>, so nothing depends on chat history.</p></div>
 </div>
 
 <h2 id="later">Later, not v1</h2>
@@ -205,6 +222,10 @@ button.primary{background:var(--human);border-color:var(--human);color:#fff}
 <h2 id="decided">Decided</h2>
 <div class="tablewrap"><table>
   <tr><th>Question</th><th>Decision</th></tr>
+  <tr><td>Loop owner (10-28)</td><td><code>factory tick</code> in Python; the LLM controller is dropped; heartbeat agent only runs <code>tick</code> on a cheap model</td></tr>
+  <tr><td>Branch claims (10-28)</td><td><code>factory/&lt;ticket-id&gt;</code>; existing branch = claimed; first push wins with a remote</td></tr>
+  <tr><td>Gate script (10-28)</td><td><code>gates.sh</code> ends in <code>GATES: PASS|FAIL</code>; missing check = FAIL; <code>tick</code> re-runs before merge</td></tr>
+  <tr><td>Back-pressure (10-28)</td><td><code>stop_if_waiting</code> = 5; at the cap no new tickets start</td></tr>
   <tr><td>Turn cap (10-28)</td><td>100 turns, hook-counted, plus a 90-min backstop; capped → Needs you</td></tr>
   <tr><td>Blast radius (10-28)</td><td>Ticket field low / medium / high; <b>high</b> needs your OK to merge into integration</td></tr>
   <tr><td>Pause</td><td>Two kinds: <b>drain</b> at a ticket boundary, <b>stop</b> mid-ticket (resumes later from the ledger)</td></tr>
@@ -213,7 +234,7 @@ button.primary{background:var(--human);border-color:var(--human);color:#fff}
   <tr><td>Home</td><td>engineering-workflow repo: <code>ew-factory</code> skill + <code>workflow.py factory</code>, v0.3.0</td></tr>
   <tr><td>One cycle</td><td>One wave (default kept; your answer covered pause, not cycle size)</td></tr>
 </table></div>
-<p class="note" style="margin-top:24px">Not verified yet: whether Orca automations can run Claude unattended in your current permission mode on this host. That is the first thing v1 has to test, along with whether those agents run the workflow's PostToolUse hook (needed for the turn count).</p>
+<p class="note" style="margin-top:24px">Not verified yet: whether Orca automations can run Claude unattended in your current permission mode on this host. That is the first thing v1 has to test, along with whether those agents run the workflow's PostToolUse hook (needed for the turn count), and whether the heartbeat accepts <code>--model haiku</code>.</p>
 </main>
 </body>
 </html>
