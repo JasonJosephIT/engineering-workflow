@@ -69,16 +69,18 @@ ul{margin:6px 0;padding-left:20px}
 <tr><td>Bug / failing test</td><td><code>ew-matt-diagnosing-bugs</code></td><td>Anything broken, throwing or slow</td><td><span class="tag t-new">routed</span></td></tr>
 <tr><td>Branch review</td><td><code>multi-model-review</code></td><td>Orca available: every branch, <b>replaces</b> code-review + ponytail-review</td><td><span class="tag t-orca">Orca</span></td></tr>
 <tr><td>Branch review</td><td><code>ew-matt-code-review</code> → <code>ew-ponytail-review</code></td><td>No Orca; multi-model-review only when you ask</td><td><span class="tag t-has">exists</span></td></tr>
-<tr><td>UI work</td><td><code>frontend-team</code></td><td>Not routed: you prompt it</td><td><span class="tag t-user">you</span></td></tr>
+<tr><td>Spec / ticket changes UI</td><td><code>design-director</code> <span class="sub">(design-genius)</span></td><td>Sets direction before the build: Direction → Build → Review</td><td><span class="tag t-new">new</span></td></tr>
+<tr><td>Branch review, UI changed</td><td><code>critique</code> <span class="sub">(design-genius)</span></td><td>Alongside the branch review</td><td><span class="tag t-new">new</span></td></tr>
+<tr><td>Design ask outside a ticket</td><td><code>design-genius</code></td><td>Not routed: you prompt it</td><td><span class="tag t-user">you</span></td></tr>
 <tr><td>After merge</td><td><code>graphify update</code></td><td>Refresh and commit <code>graphify-out/</code></td><td><span class="tag t-has">exists</span></td></tr>
 </table></div>
 <p class="sub">Add-ons are used only when installed. <code>workflow.py session</code> reports which were found; a missing one is reported, never faked.</p>
 
 <h2>2 · Add-ons, packs and what stays global</h2>
 <div class="grid">
-<div class="card a"><h3>Add-ons · <code>workflow.py addon</code></h3><p class="sub">install · list · remove — pinned and verified like EW skills</p><ul><li>graphify</li><li>multi-model-review <span class="sub">(own private repo)</span></li><li>codebase-explainer</li><li>ew-flightdeck <span class="sub">(Claude only)</span></li></ul></div>
+<div class="card a"><h3>Add-ons · <code>workflow.py addon</code></h3><p class="sub">install · list · remove — pinned and verified like EW skills</p><ul><li>graphify</li><li>multi-model-review <span class="sub">(own private repo)</span></li><li>codebase-explainer</li><li>design-genius</li><li>ew-flightdeck <span class="sub">(Claude only)</span></li></ul></div>
 <div class="card o"><h3>Domain packs · <code>workflow.py pack</code></h3><p class="sub">add · remove — linked into one project only</p><ul><li><b>web-design</b>: awwwards ×5, cast/bunshin/paint, clone-website, extract-design, dembrandt, generate-ui-from-brand</li><li><b>output-engine</b></li><li><b>personal</b>: brag-slim, resumes, financial-insights, payment credential, link identity</li></ul></div>
-<div class="card h"><h3>Global (outside EW)</h3><ul><li>frontend-team</li><li>graphify</li><li>watch-lite / watch-plus</li></ul><p class="sub">Everything else is an <code>ew-</code> skill, an add-on, or a pack.</p></div>
+<div class="card h"><h3>Global (outside EW)</h3><ul><li>design-genius <span class="sub">(replaces frontend-team)</span></li><li>graphify</li><li>watch-lite / watch-plus</li></ul><p class="sub">Everything else is an <code>ew-</code> skill, an add-on, or a pack.</p></div>
 </div>
 
 <h2>3 · ew-flightdeck</h2>

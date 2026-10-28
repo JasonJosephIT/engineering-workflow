@@ -25,6 +25,10 @@ Branch: `feature/factory-mode`. Nothing built yet.
 
 ## Decisions
 
+- 2026-10-28: design-genius (`JasonJosephIT/design-genius`) is an EW add-on and the
+  one global design skill; it replaces frontend-team, which is removed. EW routes any
+  spec or ticket that changes UI to `design-director`, and runs its `critique` at
+  branch review when UI changed. Design asks outside tickets stay user-prompted.
 - 2026-10-28: Add-ons install via `workflow.py addon install|list|remove`, pinned and
   verified like EW skills. Domain packs link into one project via `workflow.py pack add`
   (`web-design`, `output-engine`, `personal`).

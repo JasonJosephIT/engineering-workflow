@@ -24,7 +24,9 @@ is no single view of which tickets are being worked on.
 | Bug / failing test | ew-matt-diagnosing-bugs | anything broken, throwing or slow |
 | Branch review, Orca available | multi-model-review | every branch; **replaces** ew-matt-code-review + ew-ponytail-review (its rounds 1–2 cover both axes) |
 | Branch review, no Orca | ew-matt-code-review → ew-ponytail-review | every branch; multi-model-review only when the user asks |
-| UI work | frontend-team | not routed; the user prompts it |
+| Spec or ticket that changes UI | design-genius `design-director` | sets direction before the build (Direction → Build → Review) |
+| Branch review, UI changed | design-genius `critique` | alongside the branch review above |
+| Design ask outside a ticket | design-genius | not routed; the user prompts it |
 | After merge | graphify update | refresh and commit `graphify-out/` |
 
 Routed add-ons are used **only when installed**; `workflow.py session` reports which
@@ -34,13 +36,14 @@ were found. A missing add-on is reported, never faked.
 
 - `workflow.py addon install|list|remove <name>`: add-ons are pinned (version + hash)
   and verified like EW's own skills. Add-ons: graphify, multi-model-review,
-  codebase-explainer, ew-flightdeck.
+  codebase-explainer, design-genius (`JasonJosephIT/design-genius`), ew-flightdeck.
 - `workflow.py pack add|remove <pack>`: links a domain pack into one project only.
   Packs: `web-design` (awwwards ×5, genjutsu cast/bunshin/paint, clone-website,
   extract-design, dembrandt, generate-ui-from-brand), `output-engine`, `personal`
   (brag-slim, tailoring-resumes, financial-insights, create-payment-credential,
   use-link-identity).
-- Global outside EW: frontend-team, graphify, watch-lite/plus only.
+- Global outside EW: design-genius, graphify, watch-lite/plus only. design-genius
+  replaces frontend-team, which it already consolidates; frontend-team is removed.
 
 ### 3. multi-model-review gets its own repo
 
