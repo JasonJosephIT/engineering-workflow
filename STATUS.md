@@ -20,9 +20,32 @@ Branch: `feature/factory-mode`. Nothing built yet.
 2. Run `/to-spec` from `docs/factory-mode.md` and the decisions below.
 3. `/to-tickets`; first ticket is the spike that checks Orca can run Claude unattended
    in this host's permission mode.
+4. Right behind factory mode: `/to-spec` from `docs/skill-routing.md` (branch
+   `feature/skill-routing`), then `/to-tickets`.
 
 ## Decisions
 
+- 2026-10-28: Add-ons install via `workflow.py addon install|list|remove`, pinned and
+  verified like EW skills. Domain packs link into one project via `workflow.py pack add`
+  (`web-design`, `output-engine`, `personal`).
+- 2026-10-28: With Orca available, multi-model-review replaces ew-matt-code-review +
+  ew-ponytail-review at branch review. Its repo is private
+  (`JasonJosephIT/multi-model-review`).
+- 2026-10-28: The dashboard is a fork of FlightDeck (`ew-flightdeck` add-on). Panels:
+  main, architect, tickets, last prompt. Tickets come from per-ticket state files that
+  EW hooks write; factory mode uses the same files.
+- 2026-10-28: Skill routing (`docs/skill-routing.md`, branch `feature/skill-routing`)
+  ships right after factory mode, not before it.
+- 2026-10-28: EW routes to graphify, multi-model-review and codebase-explainer only
+  when installed, and gets an install endpoint for them as EW add-ons.
+- 2026-10-28: multi-model-review gets its own versioned repo. With Orca available it
+  runs at every branch review; without Orca it runs only when the user asks.
+- 2026-10-28: EW offers to build a graph in an engineering repo that has none.
+- 2026-10-28: Only frontend-team, graphify and watch-lite/plus stay global; every other
+  non-EW skill becomes a domain pack.
+- 2026-10-28: FlightDeck gets a full EW revamp: keep the main (context/cost) and
+  architect panels; replace agents and gate with the tickets in progress (across
+  sessions); drop the session log but keep "last prompt" time.
 - 2026-10-28: Per-ticket turn cap: 100 agent turns (counted by the workflow's
   PostToolUse hook via `EW_FACTORY_TICKET`) plus a 90-minute wall-clock backstop
   (`worker-stop`). A capped ticket goes to Needs-Human with a "what factory change
