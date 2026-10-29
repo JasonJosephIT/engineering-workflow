@@ -10,7 +10,7 @@ updated: 2026-10-29
 ## Now
 
 Factory mode (v0.3.0) build is running on `build/factory-mode` with
-`ew-subagent-driven-development`: tickets 01-02 merged; 03, 04, 05 and 06 building in parallel. The build log is at
+`ew-subagent-driven-development`: tickets 01, 02, 03 and 06 merged; 04 and 05 finishing review. The build log is at
 `.engineering-workflow-state/sdd/factory-mode/progress.md`. Skill routing (v0.4.0) has
 a spec (`.scratch/skill-routing/spec.md`) but no tickets yet.
 
@@ -24,6 +24,10 @@ a spec (`.scratch/skill-routing/spec.md`) but no tickets yet.
 
 ## Decisions
 
+- 2026-10-29: `factory approve` merges only a held ticket, one whose worker reported
+  approved (held for high blast radius, failed gate re-run, merge conflict or
+  uncommitted changes). Blocked, permission-needed, bypass-stopped and launch-failed
+  tickets are refused with "requeue it instead".
 - 2026-10-29: Ticket 07 (caps) now waits for 04 as well as 05+06: one generic
   `factory requeue` (needs-you, capped or interrupted → ready, keeping branch and
   worktree) lives in ticket 04, so 07 needs it. The "requeue an interrupted ticket"
