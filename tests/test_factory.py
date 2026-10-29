@@ -2,9 +2,11 @@
 import json
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -275,6 +277,70 @@ class FactoryTests(unittest.TestCase):
         self.assertTrue(self.state()['allow_bypass'])
         self.assertEqual((self.ledger()['01']['state'], self.state()['mode']), ('working', 'running'))
         self.assertFalse([c for c in self.orca_calls() if c[:1] == ['terminal']])
+
+    # --- ticket 06 ---
+    def slow_gate(self, seconds):
+        script = self.project / '.engineering-workflow' / 'gates.sh'
+        script.write_text(f'echo "start $(python3 -c "import time;print(time.time())")" >> "{self.base}/runs.log"\n'
+                          f'sleep {seconds}\n'
+                          f'echo "end $(python3 -c "import time;print(time.time())")" >> "{self.base}/runs.log"\n'
+                          'echo "GATES: PASS"\n')
+
+    def start_gate(self, *args):
+        return subprocess.Popen([sys.executable, '-B', str(ROOT / 'workflow.py'), 'factory', 'gate', *args,
+                                 '--project', str(self.project)], env=self.env, text=True,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+
+    def test_concurrent_gates_take_turns_and_the_wait_is_recorded(self):
+        self.cli('install', '--feature', 'demo', '--paused')
+        (self.state_dir / 'ledger.json').write_text(json.dumps({'01': {
+            'state': 'working', 'queue_wait_seconds': 0, 'gate_seconds': 0, 'history': []}}))
+        self.slow_gate(1)
+        first = self.start_gate('--ticket', '01')
+        time.sleep(0.4)
+        second = self.start_gate('--ticket', '01')
+        self.assertEqual((first.wait(timeout=30), second.wait(timeout=30)), (0, 0))
+        marks = [line.split() for line in (self.base / 'runs.log').read_text().splitlines()]
+        self.assertEqual([m[0] for m in marks], ['start', 'end', 'start', 'end'])
+        times = [float(m[1]) for m in marks]
+        self.assertEqual(times, sorted(times))
+        entry = self.ledger()['01']
+        self.assertGreater(entry['queue_wait_seconds'], 0.2)
+        self.assertGreater(entry['gate_seconds'], 0.9)
+
+    def test_a_gate_that_dies_frees_its_slot(self):
+        self.cli('install', '--feature', 'demo', '--paused')
+        self.slow_gate(60)
+        dying = self.start_gate()
+        time.sleep(1)
+        os.killpg(dying.pid, signal.SIGKILL); dying.wait()
+        self.slow_gate(0)
+        waiter = self.start_gate()
+        self.assertEqual(waiter.wait(timeout=15), 0)
+
+    def test_more_build_slots_let_gates_run_together(self):
+        self.cli('install', '--feature', 'demo', '--paused')
+        state = self.state(); state['build_slots'] = 2
+        (self.state_dir / 'state.json').write_text(json.dumps(state))
+        self.slow_gate(1)
+        runs = [self.start_gate(), self.start_gate()]
+        begin = time.time()
+        self.assertEqual([r.wait(timeout=30) for r in runs], [0, 0])
+        self.assertLess(time.time() - begin, 1.9)
+
+    def test_tick_merge_gate_goes_through_the_queue_and_records_times(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        self.slow_gate(1)
+        self.git('commit', '-qam', 'Slow gate')
+        self.git('merge', '-q', 'build/demo', cwd=self.worktree)
+        holder = self.start_gate()
+        time.sleep(0.4)
+        self.cli('report', '01', 'approved', '--slowed-by', 'nothing', project=self.worktree)
+        holder.wait(timeout=30)
+        entry = self.ledger()['01']
+        self.assertEqual(entry['state'], 'merged')
+        self.assertGreater(entry['queue_wait_seconds'], 0.3)
+        self.assertGreater(entry['gate_seconds'], 0.9)
 
 
 if __name__ == '__main__':
