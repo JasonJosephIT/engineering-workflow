@@ -255,13 +255,20 @@ def start_tickets(state, ledger, out):
 def in_flight(ledger): return any(e["state"] in ("working", "approved") for e in ledger.values())
 
 
+def wave_settled(state, ledger, ticket):
+    """Done for this wave: finished or parked, or never claimable here (no longer ready, or claimed elsewhere)."""
+    if ticket in ledger: return ledger[ticket]["state"] in ("merged", "needs-you", "capped", "interrupted")
+    branch = f"refs/heads/factory/{state['feature']}-{ticket}"
+    claimed = git("rev-parse", "--verify", "--quiet", branch, cwd=state["integration_checkout"]) is not None
+    return claimed or ticket not in [t["id"] for t in startable(state, ledger)]
+
+
 def update_mode(state, ledger, out):
     """draining -> paused once nothing is in flight; once -> paused once every wave ticket is settled."""
-    settled = ("merged", "needs-you", "capped", "interrupted")
     if state["mode"] == "draining" and not in_flight(ledger):
         state["mode"] = "paused"
         out.append("drained; factory paused")
-    elif state["mode"] == "once" and all(ledger.get(t, {}).get("state") in settled for t in state["wave"]):
+    elif state["mode"] == "once" and all(wave_settled(state, ledger, t) for t in state["wave"]):
         state["mode"], state["wave_ended_at"] = "paused", now()
         out.append("wave done; factory paused")
 
@@ -352,7 +359,9 @@ def set_mode(directory, mode):
     with tick_lock(directory):
         state, ledger = load(directory)
         if mode == "draining" and not in_flight(ledger): mode = "paused"
-        if mode == "once": state["wave"] = [t["id"] for t in ready_tickets(state, ledger)]
+        if mode == "once":
+            state["wave"] = [t["id"] for t in ready_tickets(state, ledger)]
+            state.pop("wave_ended_at", None)
         state["mode"] = mode
         save(directory / "state.json", state)
     return mode
@@ -369,7 +378,7 @@ def pause(args):
             if entry["state"] != "working":
                 continue
             try: stopped = not entry["worker_handle"] or stop_worker(entry["worker_handle"])
-            except ValueError: stopped = False
+            except (ValueError, subprocess.SubprocessError): stopped = False  # what the adapter can raise
             if not stopped: print(f"worker {entry['worker_handle']} did not stop; close it in Orca")
             move(entry, "interrupted")
             print(f"interrupted {ticket}; {entry['branch']} and its worktree are kept")

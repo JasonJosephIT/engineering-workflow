@@ -34,6 +34,7 @@ elif words.startswith('terminal read'):
     bypass = (control / 'bypass').exists()
     reply(text='claude --dangerously-skip-permissions' if bypass else 'claude')
 elif words.startswith('terminal close'): reply(ok=False)
+elif words.startswith('terminal show') and (control / 'show-fails').exists(): reply(ok=False)
 elif words.startswith('terminal show'): reply(terminal={{'connected': False, 'exitCause': 'closed'}})
 else: reply(ok=False)
 """
@@ -283,6 +284,10 @@ class FactoryTests(unittest.TestCase):
         self.git('add', '-A'); self.git('commit', '-qm', f'ticket {number}')
         return self.state_dir / 'worktrees' / f'demo-{number}'
 
+    def set_mode(self, mode):
+        state = self.state(); state['mode'] = mode
+        (self.state_dir / 'state.json').write_text(json.dumps(state))
+
     def test_pause_drains_in_flight_work_then_pauses(self):
         self.add_ticket('02', 'other')
         self.cli('install', '--feature', 'demo'); self.cli('tick')
@@ -336,6 +341,35 @@ class FactoryTests(unittest.TestCase):
         self.assertTrue(state['wave_ended_at'])
         self.cli('tick')
         self.assertNotIn('03', self.ledger())
+        self.cli('cycle')
+        self.assertEqual((self.state()['mode'], self.state()['wave']), ('once', ['03']))
+        self.assertNotIn('wave_ended_at', self.state())
+
+    def test_wave_ticket_claimed_elsewhere_does_not_keep_the_wave_open(self):
+        self.add_ticket('02', 'other')
+        self.git('branch', 'factory/demo-02', 'build/demo')  # claimed by someone else
+        self.cli('install', '--feature', 'demo', '--paused'); self.cli('cycle')
+        self.assertEqual(self.ledger()['01']['state'], 'working')
+        self.build(); self.approve()
+        self.assertNotIn('02', self.ledger())
+        self.assertEqual(self.state()['mode'], 'paused')
+
+    def test_wave_ticket_no_longer_ready_does_not_keep_the_wave_open(self):
+        ticket = self.project / '.scratch' / 'demo' / 'issues' / '02-other.md'
+        self.add_ticket('02', 'other')
+        self.cli('install', '--feature', 'demo', '--paused'); self.cli('cycle')
+        ticket.write_text(TICKET.replace('ready-for-agent', 'needs-triage'))
+        self.git('commit', '-qam', 'retriage 02')
+        self.build(); self.approve()
+        self.assertNotIn('02', self.ledger())
+        self.assertEqual(self.state()['mode'], 'paused')
+
+    def test_pause_now_saves_the_ledger_when_orca_fails_to_confirm_a_stop(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        (self.orca_dir / 'show-fails').touch()
+        out = self.cli('pause', '--now').stdout
+        self.assertIn('worker term_1 did not stop; close it in Orca', out)
+        self.assertEqual((self.ledger()['01']['state'], self.state()['mode']), ('interrupted', 'paused'))
 
     def test_precheck_runs_only_when_unpaused_with_work_to_do(self):
         self.add_ticket('02', 'other')
@@ -353,10 +387,6 @@ class FactoryTests(unittest.TestCase):
         self.cli('precheck', ok=False)  # draining starts nothing, so a ready ticket is no work
         self.set_mode('running')
         self.cli('precheck')
-
-    def set_mode(self, mode):
-        state = self.state(); state['mode'] = mode
-        (self.state_dir / 'state.json').write_text(json.dumps(state))
 
     def test_precheck_runs_for_an_approved_ticket_waiting_to_merge(self):
         self.cli('install', '--feature', 'demo'); self.cli('tick')
