@@ -28,7 +28,7 @@
   },
   "files": {
     "LICENSE": "1ff535e3e56012b4b3af3a3418968032d4da65977fe302952019e33c5304a7cd",
-    "README.md": "909596c38afec2925097ba0fbfb65fa5bec674ba18ab94a5326f1c064d3567d0",
+    "README.md": "ff3f52699fd023bee458e822d2d4aae791cb07938dc3cf419ab39e90c7bc2ed7",
     "SOURCES.md": "283253f7ce0f8fb0cc9a7eec8de358395ef5e05ec68f55858f1ac30dd814aa0d",
     "VERSION": "d915cc95d6ca8f47ae297713ed46d4e5c5d99ddd29fc3c61e263bdf305f2b5b0",
     "adapters/agy.md": "5306fc7efe9725375e7967dc95f9d9909127f0f44f8f4bd2ccb6b9c74b5255a9",
@@ -37,12 +37,12 @@
     "adapters/gemini.md": "151cd43297b5c1ff784e2975fc96ba516d68439171191607dea83941b4349b92",
     "core/REVIEW_CONTRACT.md": "298ba415ea78f5d8e9ce0ee3e4ce26b2f17cddc1e6f07b6d2d5384e22e2cec47",
     "core/WORKFLOW.md": "fe90eb5554e93725c2789596877dc7cf0c1eb8936064990fdb49657bdf7c40b0",
-    "factory.py": "5eeca56f3fa16601ea7e6b0803d79440207456b85a465e39d672454e77207822",
+    "factory.py": "7e751e17f3d3b86c3f73e4b5e07453ae486e7150cc3e0c2d97ab1adb469be0e2",
     "reviews.py": "8c14cdfea96555862ca413fc9d2ecd4b84e6b9a00e99b78c68934e32ef31ea95",
     "skills/autopilot/SKILL.md": "48e03cfbaa4d01fa058f7f21db12ccf239ddaad3b1ed1c04b45b4808320da8cb",
     "skills/deploy-checklist/SKILL.md": "ec7a1df34b92b25c0df89e2d0f16b9f87d36c342a6488612d5ebb4156c00a13d",
     "skills/docs-health/SKILL.md": "8b5174f9c7eb096b374fccda48fff5d4d12efd958d333ed41c03b7548fc283db",
-    "skills/factory/SKILL.md": "3ed9761697ffc77b67e7ea91b3f515b85b34f09c849d184ed3ed4563db5df10c",
+    "skills/factory/SKILL.md": "66a21790992e1cc65cc28e17f84c390cc0c7291ecc6de8edafb3074be3a6b683",
     "skills/finishing-a-development-branch/SKILL.md": "8a672ffbf34feaabeb414c19fd705ed36f3310187e1605a3f9e45eacd150d5be",
     "skills/implementation-review/SKILL.md": "61fcf765a45febe7352e5539fa74784b2f043a07bc3727bca975012352bd4016",
     "skills/incident-response/SKILL.md": "e78583fd64ce4559a04c5a178867ff2d34807519f7d37149d37302d095856d78",
@@ -159,7 +159,7 @@
     "vendor/mattpocock/skills/productivity/writing-for-agents/SKILL-MECHANICS.md": "c768e6307c7c10728c401c213f2c4ba71c542127eeb7ad2956aabd15a0fa0059",
     "vendor/mattpocock/skills/productivity/writing-for-agents/SKILL.md": "7e3a8a88fc251fae5224405967fc7731313c2767c732cdf77c78a4855a682580",
     "vendor/mattpocock/skills/productivity/writing-for-agents/agents/openai.yaml": "eacb24b2a618cfb81dacb0416f4fdd75ddf3a8060f8ddb99aae1b1e301907e4b",
-    "workflow.py": "ec7add01b3d1234f3cc0747215cc7760ada4c5d61947511832c9eb74aa82a3ee"
+    "workflow.py": "2eb3aed3498cea77f496aefe4e15d1484b6ada7e18d893fd4bd1cc8674f8020d"
   },
   "name": "engineering-workflow",
   "release": "v0.3.0",

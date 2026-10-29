@@ -108,15 +108,25 @@ line is `GATES: PASS`.
 Defaults: concurrency 3, build_slots 1, daily_ticket_cap 10, stop_if_waiting 5,
 max_turns 100, max_minutes 90. The heartbeat runs hourly on `--model sonnet`.
 Orca launches Claude in bypass mode by default, so the factory refuses to keep
-such a worker unless installed with `--allow-bypass`.
+such a worker unless installed with `--allow-bypass`. In bypass mode Guard is the
+only safety net and it is not a sandbox: a worker can still edit any file it can
+reach. Use --allow-bypass only for repos and machines you trust the agent with.
 
 ```sh
-python3 -B workflow.py factory install --feature NAME [--paused] [--allow-bypass]
+python3 -B workflow.py factory install --feature NAME [--integration-branch BRANCH] [--paused] [--allow-bypass]
 python3 -B workflow.py factory status | set SETTING VALUE | pause [--now] | resume
 python3 -B workflow.py factory cycle | approve TICKET | requeue TICKET | uninstall
 ```
 
-`tick`, `precheck`, `gate` and `report` are run by the heartbeat and the workers.
+`--integration-branch` defaults to the branch checked out in the project. `set`
+takes one of `concurrency`, `build_slots`, `daily_ticket_cap`, `stop_if_waiting`,
+`max_turns` or `max_minutes` and a positive integer. A ticket whose changes touch
+workflow control files (`.engineering-workflow/`, `.claude/`, `CLAUDE.md`,
+`AGENTS.md`, the feature's `.scratch/` folder and similar) waits for `approve`.
+`uninstall` stops the workers and keeps the ledger as `ledger-<feature>-<time>.json`.
+
+`tick`, `precheck`, `gate` and `report` are run by the heartbeat and the workers;
+run the person-only commands from the integration checkout, not a ticket worktree.
 
 ## Project discovery and implementation reviews
 
