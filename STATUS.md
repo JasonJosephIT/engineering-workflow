@@ -1,6 +1,6 @@
 ---
 status: active
-progress: 40
+progress: 60
 next_date: 2026-10-29
 updated: 2026-10-29
 ---
@@ -10,7 +10,7 @@ updated: 2026-10-29
 ## Now
 
 Factory mode (v0.3.0) build is running on `build/factory-mode` with
-`ew-subagent-driven-development`: tickets 01, 02, 03, 05 and 06 merged; 04 integrating; 09 building. The build log is at
+`ew-subagent-driven-development`: tickets 01-06 merged; 07 (caps) and 09 (final review, skill) building; then 08, then 10. The build log is at
 `.engineering-workflow-state/sdd/factory-mode/progress.md`. Skill routing (v0.4.0) has
 a spec (`.scratch/skill-routing/spec.md`) but no tickets yet.
 
@@ -24,6 +24,11 @@ a spec (`.scratch/skill-routing/spec.md`) but no tickets yet.
 
 ## Decisions
 
+- 2026-10-29: Factory turn counts and the "permission needed" flag live in a small file
+  in each ticket worktree (`.engineering-workflow-state/factory-turns.json`), not in
+  `ledger.json`, so hooks never wait on the tick lock while a pre-merge gate runs;
+  `tick` copies the count into the ledger. A relaunched (requeued) ticket starts with
+  its turn count reset.
 - 2026-10-29: The factory's final review writes its findings to
   `.engineering-workflow-state/factory/final-review.md` (agents writing ledger JSON is
   fragile); `factory status` points at that file and the integration card gets a
