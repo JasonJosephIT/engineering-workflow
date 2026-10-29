@@ -17,7 +17,6 @@ main is untouched (12c0318). Not pushed, not merged to main. Build log:
 ## Next
 
 1. Review and merge the `build/factory-mode` PR, then tag/release v0.3.0.
-2. (in progress) Turn-cap report exception, then push + PR.
 3. Remove the `orca-spike` repo entry in Orca's UI (left by the spike; no CLI for it).
 4. First real factory run on a small feature to confirm the unverified Orca facts.
 5. Skill routing: spec written (`.scratch/skill-routing/spec.md`); next
@@ -187,6 +186,8 @@ main is untouched (12c0318). Not pushed, not merged to main. Build log:
   for dead workers.
 - Untested paths: git timeouts on worktree add/merge/remove; requeue of a leftover
   claim whose branch is gone. A claim rejected by another host's push retries each tick.
+- Follow-up: `factory.state_dir` trusts the `state_dir` in a worktree's marker file,
+  which the worker can rewrite; derive it from the worktree's location instead.
 - Guard is not a sandbox in bypass mode: a worker can edit its own counters/marker or
   any reachable file; the time cap and the control-file merge hold are the backstops.
 
