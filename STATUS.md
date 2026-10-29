@@ -10,7 +10,7 @@ updated: 2026-10-29
 ## Now
 
 Factory mode (v0.3.0) build is running on `build/factory-mode` with
-`ew-subagent-driven-development`: ticket 01 (Orca spike) done; ticket 02 (tracer) in progress. The build log is at
+`ew-subagent-driven-development`: tickets 01, 02, 03 and 06 merged; 04 and 05 finishing review. The build log is at
 `.engineering-workflow-state/sdd/factory-mode/progress.md`. Skill routing (v0.4.0) has
 a spec (`.scratch/skill-routing/spec.md`) but no tickets yet.
 
@@ -24,6 +24,14 @@ a spec (`.scratch/skill-routing/spec.md`) but no tickets yet.
 
 ## Decisions
 
+- 2026-10-29: `factory approve` merges only a held ticket, one whose worker reported
+  approved (held for high blast radius, failed gate re-run, merge conflict or
+  uncommitted changes). Blocked, permission-needed, bypass-stopped and launch-failed
+  tickets are refused with "requeue it instead".
+- 2026-10-29: Ticket 07 (caps) now waits for 04 as well as 05+06: one generic
+  `factory requeue` (needs-you, capped or interrupted → ready, keeping branch and
+  worktree) lives in ticket 04, so 07 needs it. The "requeue an interrupted ticket"
+  test moves from 05 to 07.
 - 2026-10-29: Factory build details fixed for ticket 02 onward: gate script is
   `.engineering-workflow/gates.sh` (from the design doc); factory state and ticket
   worktrees live under `.engineering-workflow-state/factory/` (worktrees in

@@ -10,6 +10,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import time
 
 from workflow import encoded, find_project, git, read_json, write_atomic
 
@@ -121,13 +122,24 @@ def tickets(checkout, feature):
             fields.setdefault(key, value)  # the header's line wins over later body lines
         radius = fields.get("Blast radius")
         found.append({"id": path.name[:2], "path": path, "status": fields.get("Status", ""),
-                      "radius": radius if radius in ("low", "medium") else "high"})
+                      "radius": radius if radius in ("low", "medium") else "high",
+                      "blocked_by": re.findall(r"(?:^|,)\s*(\d\d)\b", fields.get("Blocked by", ""))})
     return found
 
 
 def ready_tickets(state, ledger):
-    return [t for t in tickets(state["integration_checkout"], state["feature"])
-            if t["status"] == "ready-for-agent" and t["id"] not in ledger]
+    found = tickets(state["integration_checkout"], state["feature"])
+    status = {t["id"]: t["status"] for t in found}
+
+    def merged(blocker):  # a blocker outside the ledger is a manual ticket: resolved/done counts
+        return ledger[blocker]["state"] == "merged" if blocker in ledger else status.get(blocker) in ("resolved", "done")
+
+    def fresh(ticket):
+        return ticket["status"] == "ready-for-agent" and all(merged(b) for b in ticket["blocked_by"])
+
+    def requeued(ticket): return ledger[ticket["id"]]["state"] == "ready"
+
+    return [t for t in found if (requeued(t) if t["id"] in ledger else fresh(t))]
 
 
 def move(entry, new_state, reason=None):
@@ -172,6 +184,31 @@ def run_gate(checkout):
     return bool(lines) and lines[-1] == "GATES: PASS", output
 
 
+def queued_gate(directory, checkout):
+    """Run the gate inside one of build_slots slot locks; return (passed, output, waited, ran) seconds."""
+    state_file = Path(directory) / "state.json"
+    slots = read_json(state_file)["build_slots"] if state_file.is_file() else 1
+    (Path(directory) / "slots").mkdir(parents=True, exist_ok=True)
+    begin = time.monotonic()
+    while True:
+        for number in range(slots):
+            handle = open(Path(directory) / "slots" / f"{number}.lock", "a")
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)  # the kernel frees it if we die
+            except BlockingIOError:
+                handle.close(); continue
+            with handle:
+                started = time.monotonic()
+                passed, output = run_gate(checkout)
+                return passed, output, started - begin, time.monotonic() - started
+        time.sleep(0.1)  # ponytail: polling; a fair FIFO queue only if starvation shows up
+
+
+def record_gate(entry, waited, ran):
+    entry["queue_wait_seconds"] = round(entry.get("queue_wait_seconds", 0) + waited, 3)
+    entry["gate_seconds"] = round(ran, 3)
+
+
 def starter_gate(checkout):
     checkout, checks = Path(checkout), []
     if any((checkout / "tests").glob("*.py")): checks.append(("tests", "python3 -m unittest discover -s tests"))
@@ -185,11 +222,12 @@ def starter_gate(checkout):
 
 # --- Tick steps -------------------------------------------------------------------
 
-def gate_ticket(entry):
+def gate_ticket(state, entry):
     """Return a needs-you reason, or None when the ticket branch is clean and passes its gate."""
     if git("status", "--porcelain", cwd=entry["worktree"]) != "":
         return "uncommitted changes in the worktree"
-    passed, _ = run_gate(entry["worktree"])
+    passed, _, waited, ran = queued_gate(state["state_dir"], entry["worktree"])
+    record_gate(entry, waited, ran)
     return None if passed else "gates failed on the ticket branch"
 
 
@@ -212,7 +250,7 @@ def merge_ticket(state, entry):
 
 def land(state, ticket, entry, out, hold=False):
     """Gate, then merge; a failure or a hold leaves the ticket in needs-you. Returns True when merged."""
-    reason = gate_ticket(entry) or (HOLD_REASON if hold else None) or merge_ticket(state, entry)
+    reason = gate_ticket(state, entry) or (HOLD_REASON if hold else None) or merge_ticket(state, entry)
     if reason:
         move(entry, "needs-you", reason)
         out.append(f"{ticket} needs you: {reason}")
@@ -238,26 +276,30 @@ def merge_approved(state, ledger, out):
 def worker_brief(state, ticket, worktree):
     path = Path(worktree) / Path(ticket["path"]).relative_to(state["integration_checkout"])
     return (f"You are a factory worker. Implement the ticket {path} on this worktree's branch only. "
-            f"Run the gates with: {workflow_command('gate', '--project', worktree)} and commit your work. "
+            f"Run the gates with: {workflow_command('gate', '--ticket', ticket['id'], '--project', worktree)} and commit your work. "
             f"Finish with: {workflow_command('report', ticket['id'], 'approved', '--project', worktree)}"
             f' --slowed-by "<one line>" (or report blocked --reason "<one line>").')
 
 
 def claim(state, ledger, ticket):
-    """Branch from the integration tip, add the worktree and marker, and persist a working entry."""
+    """Branch from the integration tip (pushed when a remote exists), persist the entry, add the worktree and marker."""
     checkout, directory = state["integration_checkout"], Path(state["state_dir"])
     branch = f"factory/{state['feature']}-{ticket['id']}"
     if git("branch", branch, state["integration_branch"], cwd=checkout) is None:
         return None  # already claimed
+    remote = git("remote", cwd=checkout)
+    if remote and git("push", remote.splitlines()[0], branch, cwd=checkout) is None:
+        git("branch", "-D", branch, cwd=checkout)
+        return None  # push rejected: someone else claimed it
     worktree = directory / "worktrees" / f"{state['feature']}-{ticket['id']}"
-    if git("worktree", "add", str(worktree), branch, cwd=checkout) is None:
-        raise ValueError(f"Could not create worktree for {branch}")
-    save(ticket_marker(worktree), {"ticket": ticket["id"], "state_dir": str(directory)})
     entry = ledger[ticket["id"]] = {
         "state": "working", "branch": branch, "worktree": str(worktree), "worker_handle": None,
         "started_at": now(), "turns": 0, "queue_wait_seconds": 0, "gate_seconds": 0,
         "slowed_by": None, "reason": None, "history": [{"at": now(), "state": "working"}]}
-    save(directory / "ledger.json", ledger)  # a crash during launch must not lose the claim
+    save(directory / "ledger.json", ledger)  # persist before the worktree so a crash cannot strand the claim
+    if git("worktree", "add", str(worktree), branch, cwd=checkout) is None:
+        raise ValueError(f"Could not create worktree for {branch}")
+    save(ticket_marker(worktree), {"ticket": ticket["id"], "state_dir": str(directory)})
     return entry
 
 
@@ -287,29 +329,62 @@ def relaunch(state, entry, ticket, out):
     launch(state, entry, ticket, out, started=f"relaunched {ticket['id']} in its worktree")
 
 
-def requeued_tickets(state, ledger):
-    return [t for t in tickets(state["integration_checkout"], state["feature"])
-            if ledger.get(t["id"], {}).get("state") == "ready"]
+def startable(state, ledger):
+    """Ready tickets this mode may start: all in running, the wave's in once, none otherwise."""
+    if state["mode"] == "running": return ready_tickets(state, ledger)
+    if state["mode"] == "once": return [t for t in ready_tickets(state, ledger) if t["id"] in state["wave"]]
+    return []
+
+
+def free_room(state, ledger):
+    """How many tickets may start now: concurrency minus working, within the UTC daily cap."""
+    today = now()[:10]
+    working = sum(e["state"] == "working" for e in ledger.values())
+    started = sum(e["started_at"][:10] == today for e in ledger.values())
+    return min(state["concurrency"] - working, state["daily_ticket_cap"] - started)
 
 
 def start_tickets(state, ledger, out):
-    if state["mode"] != "running":
-        return
-    # ponytail: one per tick, requeued first; ticket 03 adds concurrency
-    for ticket in (requeued_tickets(state, ledger) + ready_tickets(state, ledger))[:1]:
-        if ticket["id"] in ledger:
+    mode, room = state["mode"], free_room(state, ledger)
+    for ticket in startable(state, ledger):
+        if room <= 0 or state["mode"] != mode:  # launch() may pause the factory (bypass)
+            break
+        if ticket["id"] in ledger:  # requeued: its branch and worktree already exist
+            room -= 1
             relaunch(state, ledger[ticket["id"]], ticket, out)
             continue
         entry = claim(state, ledger, ticket)
         if entry is None:
             out.append(f"{ticket['id']} already claimed")
         else:
+            room -= 1
             launch(state, entry, ticket, out)
 
 
 def update_cards(ledger, out):
     for ticket, entry in ledger.items():
         card(ticket, entry, out)
+
+
+def in_flight(ledger): return any(e["state"] in ("working", "approved") for e in ledger.values())
+
+
+def wave_settled(state, ledger, ticket):
+    """Done for this wave: finished or parked, or never claimable here (no longer ready, or claimed elsewhere)."""
+    if ticket in ledger: return ledger[ticket]["state"] in ("merged", "needs-you", "capped", "interrupted")
+    branch = f"refs/heads/factory/{state['feature']}-{ticket}"
+    claimed = git("rev-parse", "--verify", "--quiet", branch, cwd=state["integration_checkout"]) is not None
+    return claimed or ticket not in [t["id"] for t in startable(state, ledger)]
+
+
+def update_mode(state, ledger, out):
+    """draining -> paused once nothing is in flight; once -> paused once every wave ticket is settled."""
+    if state["mode"] == "draining" and not in_flight(ledger):
+        state["mode"] = "paused"
+        out.append("drained; factory paused")
+    elif state["mode"] == "once" and all(wave_settled(state, ledger, t) for t in state["wave"]):
+        state["mode"], state["wave_ended_at"] = "paused", now()
+        out.append("wave done; factory paused")
 
 
 def tick(directory):
@@ -319,6 +394,7 @@ def tick(directory):
         try:
             merge_approved(state, ledger, out)
             start_tickets(state, ledger, out)
+            update_mode(state, ledger, out)
             state["last_tick"] = now()
         finally:  # keep merges and claims made before any failure
             update_cards(ledger, out)
@@ -361,15 +437,23 @@ def install(args):
 def status(args):
     state, ledger = load(state_dir(args.project))
     count = lambda name: sum(e["state"] == name for e in ledger.values())
-    print(f"factory: {state['mode']} · {len(ready_tickets(state, ledger)) + count('ready')} ready"
+    print(f"factory: {state['mode']} · {len(ready_tickets(state, ledger))} ready"
           f" · {count('working')} building · {count('needs-you')} needs you")
     for ticket, entry in sorted(ledger.items()):
         print(" ".join(filter(None, [ticket, entry["state"], entry["branch"], entry["reason"]])))
 
 
 def gate(args):
-    passed, output = run_gate(find_project(args.project))
+    directory, marker = state_dir(args.project), ticket_marker(args.project)
+    ticket = args.for_ticket or (read_json(marker)["ticket"] if marker.is_file() else None)
+    passed, output, waited, ran = queued_gate(directory, find_project(args.project))
     print(output, end="")
+    if ticket:
+        with tick_lock(directory):  # short: the gate itself ran outside the lock
+            state, ledger = load(directory)
+            if ticket in ledger:
+                record_gate(ledger[ticket], waited, ran)
+                save(directory / "ledger.json", ledger)
     return 0 if passed else 1
 
 
@@ -419,24 +503,71 @@ def requeue(args):
 
 
 def precheck(args):
-    # ponytail: stub until ticket 05; skip only when paused.
-    state, _ = load(state_dir(args.project))
-    return 1 if state["mode"] == "paused" else 0
+    state, ledger = load(state_dir(args.project))
+    work = in_flight(ledger) or (free_room(state, ledger) > 0 and startable(state, ledger))
+    return 0 if state["mode"] != "paused" and work else 1
+
+
+def set_mode(directory, mode):
+    with tick_lock(directory):
+        state, ledger = load(directory)
+        if mode == "draining" and not in_flight(ledger): mode = "paused"
+        if mode == "once":
+            state["wave"] = [t["id"] for t in ready_tickets(state, ledger)]
+            state.pop("wave_ended_at", None)
+        state["mode"] = mode
+        save(directory / "state.json", state)
+    return mode
+
+
+def pause(args):
+    directory = state_dir(args.project)
+    if not args.now:
+        print(f"factory {set_mode(directory, 'draining')}")
+        return
+    with tick_lock(directory):
+        state, ledger = load(directory)
+        for ticket, entry in ledger.items():
+            if entry["state"] != "working":
+                continue
+            try: stopped = not entry["worker_handle"] or stop_worker(entry["worker_handle"])
+            except (ValueError, subprocess.SubprocessError): stopped = False  # what the adapter can raise
+            if not stopped: print(f"worker {entry['worker_handle']} did not stop; close it in Orca")
+            move(entry, "interrupted")
+            print(f"interrupted {ticket}; {entry['branch']} and its worktree are kept")
+        state["mode"] = "paused"
+        save(directory / "ledger.json", ledger)
+        save(directory / "state.json", state)
+    print("factory paused")
+
+
+def resume(args):
+    set_mode(state_dir(args.project), "running")
+    tick(state_dir(args.project))
+
+
+def cycle(args):
+    set_mode(state_dir(args.project), "once")
+    tick(state_dir(args.project))  # a manual Orca automation run ignores the precheck, so tick directly
 
 
 def add_parser(sub):
     f = sub.add_parser("factory", help="Unattended per-ticket builds through Orca")
     f.add_argument("action", choices=("install", "status", "tick", "gate", "report", "precheck",
+                                      "pause", "resume", "cycle",
                                       "approve", "requeue"))
     f.add_argument("ticket", nargs="?"); f.add_argument("result", nargs="?")
     f.add_argument("--project", default="."); f.add_argument("--feature")
     f.add_argument("--integration-branch", help="Default: the branch checked out in the project")
     f.add_argument("--paused", action="store_true"); f.add_argument("--allow-bypass", action="store_true")
     f.add_argument("--slowed-by"); f.add_argument("--reason")
+    f.add_argument("--now", action="store_true", help="pause: stop every worker now (keeps their worktrees)")
+    f.add_argument("--ticket", dest="for_ticket", help="gate: record queue wait and run time on this ticket")
 
 
 def run(args):
     actions = {"install": install, "status": status, "gate": gate, "report": report, "precheck": precheck,
-               "approve": approve, "requeue": requeue,
-               "tick": lambda a: tick(state_dir(a.project))}
+               "tick": lambda a: tick(state_dir(a.project)),
+               "pause": pause, "resume": resume, "cycle": cycle,
+               "approve": approve, "requeue": requeue}
     return actions[args.action](args) or 0
