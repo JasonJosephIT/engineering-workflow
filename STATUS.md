@@ -1,6 +1,6 @@
 ---
 status: active
-progress: 95
+progress: 100
 next_date: 2026-10-29
 updated: 2026-10-29
 ---
@@ -9,15 +9,14 @@ updated: 2026-10-29
 
 ## Now
 
-Factory mode v0.3.0 is built on `build/factory-mode` (tickets 01-10 merged, final
+Factory mode v0.3.0 is merged to main (tickets 01-10 merged, final
 review done and its findings fixed): 127 tests and `verify --expected 0.3.0` pass;
-main is untouched (12c0318). Pushed; open as PR #6 against main, not merged. Build log:
+Merged to main via PR #6 (c398dd6) on 2026-10-29; not yet tagged. Build log:
 `.engineering-workflow-state/sdd/factory-mode/progress.md`.
 
 ## Next
 
-1. Review and merge PR JasonJosephIT/engineering-workflow#6 (`build/factory-mode` → main),
-   then tag/release v0.3.0.
+1. Tag and release v0.3.0 from main (c398dd6).
 3. Remove the `orca-spike` repo entry in Orca's UI (left by the spike; no CLI for it).
 4. First real factory run on a small feature to confirm the unverified Orca facts.
 5. Skill routing: spec written (`.scratch/skill-routing/spec.md`); next
@@ -25,6 +24,7 @@ main is untouched (12c0318). Pushed; open as PR #6 against main, not merged. Bui
 
 ## Decisions
 
+- 2026-10-29: PR #6 merged to main (merge commit c398dd6) at your request.
 - 2026-10-29: At the turn cap the hook lets exactly one command through: the worker's
   own `workflow.py factory report <NN> blocked` (no shell operators), so a capped ticket
   lands in needs-you with the worker's reason; every other tool call stays refused.
