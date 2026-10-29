@@ -308,6 +308,18 @@ class FactoryTests(unittest.TestCase):
         self.cli('install', '--feature', 'demo'); self.cli('tick')
         self.assertEqual(sorted(self.ledger()), ['01', '04'])
 
+    def test_prose_numbers_after_a_blocker_are_not_blockers(self):
+        self.add_ticket('02', status='resolved'); self.add_ticket('10', status='needs-triage')
+        self.add_ticket('03', blocked='02 (needs 10 users)')
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        self.assertIn('03', self.ledger())
+
+    def test_bypass_launch_stops_further_claims_in_the_same_tick(self):
+        (self.orca_dir / 'bypass').touch(); self.add_ticket('02')
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        self.assertEqual(len(self.launches()), 1)
+        self.assertEqual((sorted(self.ledger()), self.state()['mode']), (['01'], 'paused'))
+
     def test_concurrency_limits_working_tickets_and_more_start_as_others_finish(self):
         for number in ('02', '03', '04'): self.add_ticket(number)
         self.cli('install', '--feature', 'demo'); self.set_state(concurrency=2)
@@ -330,13 +342,19 @@ class FactoryTests(unittest.TestCase):
         procs = [subprocess.Popen(argv, env=self.env, stdout=subprocess.DEVNULL) for _ in range(2)]
         self.assertEqual([p.wait() for p in procs], [0, 0])
         self.assertEqual(len(self.launches()), 2)
+        self.assertEqual(sorted(c[c.index('--worktree') + 1][-7:] for c in self.launches()), ['demo-01', 'demo-02'])
         self.assertEqual(sorted(self.ledger()), ['01', '02'])
 
     def test_existing_claim_branch_is_skipped_and_later_tickets_still_start(self):
         self.add_ticket('02'); self.cli('install', '--feature', 'demo')
         self.git('branch', 'factory/demo-01', 'build/demo')
+        sha = self.git('rev-parse', 'factory/demo-01')
+        self.git('commit', '--allow-empty', '-qm', 'elsewhere'); self.git('branch', '-f', 'factory/demo-01', 'HEAD')
+        sha = self.git('rev-parse', 'factory/demo-01')
         out = self.cli('tick').stdout
         self.assertIn('01 already claimed', out); self.assertEqual(sorted(self.ledger()), ['02'])
+        self.assertEqual(self.git('rev-parse', 'factory/demo-01'), sha)
+        self.assertFalse(self.worktree.exists())
 
     def test_claim_branch_is_pushed_when_a_remote_exists_and_a_rejected_push_means_claimed(self):
         remote = self.base / 'remote.git'; self.git('init', '-q', '--bare', str(remote))

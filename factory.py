@@ -123,7 +123,7 @@ def ready_tickets(state, ledger):
 
     def unblocked(ticket):
         line = re.search(r"^\**Blocked by:\**[ \t]*(.*)$", ticket["path"].read_text(), re.M)
-        return all(merged(b) for b in re.findall(r"\b\d\d\b", line.group(1) if line else ""))
+        return all(merged(b) for b in re.findall(r"(?:^|,)\s*(\d\d)\b", line.group(1) if line else ""))
 
     return [t for t in found if t["status"] == "ready-for-agent" and t["id"] not in ledger and unblocked(t)]
 
@@ -257,7 +257,7 @@ def start_tickets(state, ledger, out):
     started = sum(e["started_at"][:10] == today for e in ledger.values())
     room = min(state["concurrency"] - working, state["daily_ticket_cap"] - started)
     for ticket in ready_tickets(state, ledger):
-        if room <= 0:
+        if room <= 0 or state["mode"] != "running":  # launch() may pause the factory (bypass)
             break
         entry = claim(state, ledger, ticket)
         if entry is None:
