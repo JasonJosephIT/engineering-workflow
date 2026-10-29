@@ -115,24 +115,29 @@ def state_dir(project):
     return Path(read_json(marker)["state_dir"]) if marker.is_file() else find_project(project) / STATE / "factory"
 
 
-def counters(worktree, change=None):
-    """The worktree's hook counters; `change` edits them in place. Kept out of the ledger so hooks never
-    wait on the tick lock, which tick holds through pre-merge gates."""
+def counters(worktree, change=None, reset=False):
+    """The worktree's hook counters; `change` edits them, `reset` starts them fresh without reading.
+    Kept out of the ledger so hooks never wait on the tick lock, which tick holds through pre-merge gates.
+    Raises ValueError for a file that is not valid counters: the worker can write it, so callers fail closed."""
     path = Path(worktree) / STATE / "factory-turns.json"
     with open(path.with_name("factory-turns.lock"), "a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        data = {**FRESH_COUNTERS, **(read_json(path) if path.is_file() else {})}
-        if change:
-            change(data)
-            save(path, data)
+        fcntl.flock(lock, fcntl.LOCK_EX if change or reset else fcntl.LOCK_SH)
+        data = dict(FRESH_COUNTERS) if reset or not path.is_file() else read_json(path)
+        if not (isinstance(data, dict) and type(data.get("turns")) is int and data["turns"] >= 0
+                and type(data.get("permission_needed")) is bool):
+            raise ValueError("unreadable factory counters")
+        if change: change(data)
+        if change or reset: save(path, data)
     return data
 
 
 def worker(project):
-    """(ticket, turns, max_turns) for a hook in a ticket worktree; raises when a factory file is unreadable."""
+    """(ticket, turns, max_turns) for a hook in a ticket worktree; raises when the marker or state is unreadable."""
     ticket = read_json(ticket_marker(project))
-    state = read_json(Path(ticket["state_dir"]) / "state.json")
-    return ticket["ticket"], counters(project)["turns"], int(state["max_turns"])
+    max_turns = int(read_json(Path(ticket["state_dir"]) / "state.json")["max_turns"])
+    try: turns = counters(project)["turns"]
+    except (OSError, ValueError): turns = max_turns  # a bad counters file never loosens the cap
+    return str(ticket["ticket"]), turns, max_turns
 
 
 def count_turn(project): counters(project, lambda c: c.update(turns=c["turns"] + 1))
@@ -356,7 +361,7 @@ def launch(state, entry, ticket, out, started=None):
 def relaunch(state, entry, ticket, out):
     """Start a fresh worker for a requeued ticket in its existing branch and worktree."""
     entry.update(started_at=now(), turns=0, queue_wait_seconds=0)  # caps count this run only
-    counters(entry["worktree"], lambda c: c.update(FRESH_COUNTERS))
+    counters(entry["worktree"], reset=True)
     move(entry, "working")
     launch(state, entry, ticket, out, started=f"relaunched {ticket['id']} in its worktree")
 
@@ -405,19 +410,33 @@ def reconcile(ledger, out):
             out.append(f"interrupted {ticket}: worker exited without reporting")
 
 
+def cap_verdict(state, entry):
+    """(new state, reason) when a working ticket must stop, else None."""
+    if not Path(entry["worktree"]).is_dir(): return "needs-you", "worktree missing"
+    try: hooks = counters(entry["worktree"])
+    except ValueError: hooks = {"turns": state["max_turns"], "permission_needed": False}  # fail closed
+    entry["turns"] = max(entry["turns"], hooks["turns"])  # only relaunch lowers it
+    started = datetime.fromisoformat(entry["started_at"])
+    working = (datetime.now(timezone.utc) - started).total_seconds() - entry["queue_wait_seconds"]
+    if hooks["permission_needed"]: return "needs-you", "permission needed"
+    if entry["turns"] >= state["max_turns"]: return "capped", "turn cap"
+    if working > state["max_minutes"] * 60: return "capped", "time cap"
+    return None
+
+
 def enforce_caps(state, ledger, out):
     """Tick step 2: stop a worker that needs a permission or is over its turn or time cap; keep its work."""
     for ticket, entry in ledger.items():
         if entry["state"] != "working":
             continue
-        hooks = counters(entry["worktree"])
-        entry["turns"] = hooks["turns"]
-        started = datetime.fromisoformat(entry["started_at"])
-        working = (datetime.now(timezone.utc) - started).total_seconds() - entry["queue_wait_seconds"]
-        if hooks["permission_needed"]: new, reason = "needs-you", "permission needed"
-        elif entry["turns"] >= state["max_turns"]: new, reason = "capped", "turn cap"
-        elif working > state["max_minutes"] * 60: new, reason = "capped", "time cap"
-        else: continue
+        try:
+            verdict = cap_verdict(state, entry)
+        except (OSError, ValueError, KeyError, TypeError) as error:  # one bad entry never blocks the tick
+            out.append(f"caps for {ticket} not checked: {error}")
+            continue
+        if not verdict:
+            continue
+        new, reason = verdict
         if not stop(entry): out.append(f"worker {entry['worker_handle']} did not stop; close it in Orca")
         move(entry, new, reason)
         out.append(f"{ticket} {new}: {reason}; {entry['branch']} and its worktree are kept")

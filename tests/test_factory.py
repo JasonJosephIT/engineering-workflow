@@ -879,6 +879,55 @@ class FactoryTests(unittest.TestCase):
         self.assertEqual([c[c.index('--worktree') + 1] for c in self.launches()], [f'path:{self.worktree}'] * 2)
         self.assertEqual(self.git('show', 'factory/demo-01:half.txt'), 'half done')
 
+    def counters_file(self): return self.worktree / '.engineering-workflow-state' / 'factory-turns.json'
+
+    def test_missing_worktree_parks_only_that_ticket_and_the_tick_carries_on(self):
+        self.add_ticket('02'); self.cli('install', '--feature', 'demo'); self.cli('tick')
+        other = self.state_dir / 'worktrees' / 'demo-02'
+        self.git('worktree', 'remove', '--force', str(other))
+        self.assertIn('02 needs-you: worktree missing', self.cli('tick').stdout)
+        self.assertEqual((self.ledger()['02']['state'], self.ledger()['02']['reason']), ('needs-you', 'worktree missing'))
+        self.assertIn(['terminal', 'close', '--terminal', 'term_2', '--json'], self.orca_calls())
+        self.finish('01')
+        self.assertEqual(self.ledger()['01']['state'], 'merged')
+
+    def test_garbage_counters_file_caps_the_worker_in_the_hook_and_the_tick(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        capped = self.denied('Factory turn cap reached; run factory report 01 blocked')
+        for garbage in ('{not json', '{"turns": -5, "permission_needed": false}', '{"turns": "0"}', '[]'):
+            with self.subTest(garbage=garbage):
+                self.counters_file().write_text(garbage)
+                self.assertEqual(self.bash('git status'), capped)
+        self.assertIn('01 capped: turn cap', self.cli('tick').stdout)
+        self.assertEqual(self.ledger()['01']['turns'], 100)
+
+    def test_deleting_the_counters_file_cannot_lower_the_ticket_count(self):
+        self.cli('install', '--feature', 'demo'); self.set_state(max_turns=3); self.cli('tick')
+        read = {'tool_name': 'Read', 'tool_input': {'file_path': 'README.md'}}
+        self.hook('PostToolUse', **read); self.hook('PostToolUse', **read)
+        self.cli('tick')
+        self.assertEqual(self.ledger()['01']['turns'], 2)
+        self.counters_file().unlink()
+        self.hook('PostToolUse', **read)
+        self.cli('tick')
+        self.assertEqual((self.ledger()['01']['state'], self.ledger()['01']['turns']), ('working', 2))
+        self.counters_file().write_text('{"turns": 3, "permission_needed": false}')
+        self.assertIn('01 capped: turn cap', self.cli('tick').stdout)
+
+    def test_malformed_marker_falls_back_to_plain_guard(self):
+        self.cli('install', '--feature', 'demo'); self.set_state(max_turns=1); self.cli('tick')
+        self.counters_file().write_text('{not json')
+        (self.worktree / '.engineering-workflow-state' / 'factory-ticket.json').write_text('{"ticket": ')
+        self.assertEqual(self.bash('git reset --hard')['hookSpecificOutput']['permissionDecision'], 'ask')
+        self.assertEqual(self.bash('git status'), {})
+
+    def test_credential_warning_survives_a_turn_count_that_fails(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        self.counters_file().write_text('{not json')
+        secret = self.worktree / 'example.py'; secret.write_text('access_key = "AKIA' + 'Z' * 16 + '"\n')
+        result = self.hook('PostToolUse', tool_name='Write', tool_input={'file_path': str(secret)})
+        self.assertIn('potential credential', json.dumps(result))
+
 
 if __name__ == '__main__':
     unittest.main()

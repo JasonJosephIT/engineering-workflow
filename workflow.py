@@ -586,7 +586,8 @@ def hook(platform, data, event=None):
         message = credential_check(project, inp, runtime)
         if factory_worker(project):
             import factory
-            factory.count_turn(project)
+            try: factory.count_turn(project)
+            except (OSError, ValueError): pass  # a bad counters file already caps the worker; keep the warning
         if message: return context_output(platform, event, message)
     if event in ("Stop", "AfterAgent"):
         # Subagents must not drive the controller's standing-goal loop.
