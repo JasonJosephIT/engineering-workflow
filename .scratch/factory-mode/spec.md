@@ -163,9 +163,10 @@ ticket is ready, working or approved.
 7. Mode bookkeeping and card updates for every ticket whose state changed; the
    wave's end time is recorded so `status` can summarise it.
 
-**`precheck`** exits 0 only when mode is not `paused` and `tick` has something to do
-(ready tickets with free capacity and not held, working tickets to check, or approved
-tickets to merge); otherwise non-zero so Orca skips the run.
+**`precheck`** exits 0 whenever a ticket is working, in any mode (tick reconciles, caps
+and merges, and starts nothing the mode forbids). Otherwise it exits 0 only when mode is
+not `paused` and `tick` has something to do (ready tickets with free capacity and not
+held, or approved tickets to merge); otherwise non-zero so Orca skips the run.
 
 **Heartbeat**: one Orca automation per factory, hourly, provider `claude`, running in
 the integration checkout's Orca workspace, cheap model via extra agent args, precheck

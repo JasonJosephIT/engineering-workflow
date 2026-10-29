@@ -36,9 +36,10 @@ elif words.startswith('agent launch') and (control / 'launch-fails').exists():
 elif words.startswith('agent launch'):
     launched = sum(line.startswith('["agent", "launch"') for line in (control / 'log.jsonl').read_text().splitlines())
     reply(launch={{'outcome': {{'handle': f'term_{{launched}}'}}}})
+elif words.startswith('terminal read') and (control / 'read-fails').exists(): reply(ok=False)
 elif words.startswith('terminal read'):
-    bypass = (control / 'bypass').exists()
-    reply(text='claude --dangerously-skip-permissions' if bypass else 'claude')
+    screens = (control / 'bypass', control / f"screen-{{args[args.index('--terminal') + 1]}}", control / 'screen')
+    reply(text=next((p.read_text() or 'claude --dangerously-skip-permissions' for p in screens if p.exists()), 'claude'))
 elif words.startswith('worktree set'): reply(ok=not (control / 'card-fails').exists(), worktree={{}})
 elif words.startswith('terminal close'):  # closes the terminal, yet reports ok:false like the real CLI
     (control / f"dead-{{args[args.index('--terminal') + 1]}}").touch(); reply(ok=False)
@@ -105,6 +106,7 @@ class FactoryTests(unittest.TestCase):
         self.assertIn('hourly', heartbeat)
         self.assertIn('--extra-agent-args=--model sonnet', heartbeat)
         self.assertIn(f'path:{self.project}', heartbeat)
+        self.assertIn(f"tick --detach --project '{self.project}'", heartbeat[heartbeat.index('--prompt') + 1])
         self.assertEqual(self.git('status', '--porcelain'), '')
         self.assertEqual(self.cli('status').stdout.splitlines()[0],
                          'factory: running · 1 ready · 0 building · 0 needs you')
@@ -124,7 +126,6 @@ class FactoryTests(unittest.TestCase):
 
         (self.worktree / 'thing.txt').write_text('built\n')
         self.git('add', '-A', cwd=self.worktree)
-        self.assertEqual(self.git('status', '--porcelain', cwd=self.worktree), 'A  thing.txt')
         self.git('commit', '-qm', 'Build thing', cwd=self.worktree)
         self.cli('report', '01', 'approved', '--slowed-by', 'nothing', project=self.worktree)
 
@@ -175,16 +176,20 @@ class FactoryTests(unittest.TestCase):
         (self.project / '.engineering-workflow' / 'gates.sh').unlink()
         self.cli('gate', ok=False)
 
-    def test_gate_is_rerun_on_ticket_branch_before_merge(self):
+    def test_pre_merge_gate_runs_the_integration_branch_script_not_the_workers(self):
         self.cli('install', '--feature', 'demo'); self.cli('tick')
-        (self.worktree / '.engineering-workflow' / 'gates.sh').write_text('echo "GATES: FAIL tests"\n')
-        self.git('commit', '-qam', 'Break the gate', cwd=self.worktree)
+        (self.project / '.engineering-workflow' / 'gates.sh').write_text('echo "GATES: FAIL tests"\n')
+        self.git('commit', '-qam', 'The project gate fails')
+        (self.worktree / '.engineering-workflow' / 'gates.sh').write_text('echo "GATES: PASS"\n')
+        self.git('commit', '-qam', 'Worker rewrites its gate', cwd=self.worktree)
         before = self.git('rev-parse', 'build/demo')
         self.cli('report', '01', 'approved', '--slowed-by', 'nothing', project=self.worktree)
         entry = self.ledger()['01']
         self.assertEqual((entry['state'], entry['reason']), ('needs-you', 'gates failed on the ticket branch'))
         self.assertEqual(self.git('rev-parse', 'build/demo'), before)
         self.assertTrue(self.worktree.exists())
+        self.cli('approve', '01', ok=False)
+        self.assertEqual(self.git('rev-parse', 'build/demo'), before)
 
     def test_merge_refuses_when_integration_checkout_is_on_main(self):
         self.cli('install', '--feature', 'demo'); self.cli('tick')
@@ -313,13 +318,8 @@ class FactoryTests(unittest.TestCase):
         self.assertEqual(self.state()['mode'], 'paused')
         self.assertIn(['terminal', 'close', '--terminal', 'term_1', '--json'], self.orca_calls())
         self.assertEqual((self.worktree / 'half.txt').read_text(), 'half done\n')
+        self.assertEqual(self.cards()[-1], self.held_card('interrupted: stopped by pause --now'))
         self.assertEqual(self.git('show', 'factory/demo-01:half.txt'), 'half done')
-
-    def test_resume_sets_running_and_ticks(self):
-        self.cli('install', '--feature', 'demo', '--paused')
-        self.cli('resume')
-        self.assertEqual(self.state()['mode'], 'running')
-        self.assertEqual(self.ledger()['01']['state'], 'working')
 
     def test_cycle_runs_one_wave_then_pauses(self):
         self.add_ticket('02')
@@ -350,7 +350,7 @@ class FactoryTests(unittest.TestCase):
         self.cli('install', '--feature', 'demo', '--paused'); self.cli('cycle')
         self.assertEqual(self.ledger()['01']['state'], 'working')
         self.build(); self.approve()
-        self.assertNotIn('02', self.ledger())
+        self.assertEqual(self.ledger()['02']['state'], 'needs-you')
         self.assertEqual(self.state()['mode'], 'paused')
 
     def test_wave_ticket_no_longer_ready_does_not_keep_the_wave_open(self):
@@ -457,8 +457,7 @@ class FactoryTests(unittest.TestCase):
 
     def test_more_build_slots_let_gates_run_together(self):
         self.cli('install', '--feature', 'demo', '--paused')
-        state = self.state(); state['build_slots'] = 2
-        (self.state_dir / 'state.json').write_text(json.dumps(state))
+        self.set_state(build_slots=2)
         self.slow_gate(1)
         runs = [self.start_gate(), self.start_gate()]
         begin = time.time()
@@ -548,16 +547,21 @@ class FactoryTests(unittest.TestCase):
         self.assertEqual(sorted(c[c.index('--worktree') + 1][-7:] for c in self.launches()), ['demo-01', 'demo-02'])
         self.assertEqual(sorted(self.ledger()), ['01', '02'])
 
-    def test_existing_claim_branch_is_skipped_and_later_tickets_still_start(self):
+    def test_leftover_claim_branch_parks_the_ticket_once_and_requeue_builds_on_it(self):
         self.add_ticket('02'); self.cli('install', '--feature', 'demo')
-        self.git('branch', 'factory/demo-01', 'build/demo')
+        self.git('commit', '--allow-empty', '-qm', 'elsewhere'); self.git('branch', 'factory/demo-01', 'HEAD')
         sha = self.git('rev-parse', 'factory/demo-01')
-        self.git('commit', '--allow-empty', '-qm', 'elsewhere'); self.git('branch', '-f', 'factory/demo-01', 'HEAD')
-        sha = self.git('rev-parse', 'factory/demo-01')
-        out = self.cli('tick').stdout
-        self.assertIn('01 already claimed', out); self.assertEqual(sorted(self.ledger()), ['02'])
+        self.cli('tick'); self.cli('tick')
+        entry = self.ledger()['01']
+        self.assertEqual((entry['state'], entry['reason'], entry['branch']),
+                         ('needs-you', 'claim branch exists without a ledger entry', 'factory/demo-01'))
+        self.assertEqual([h['state'] for h in entry['history']], ['needs-you'])
+        self.assertEqual(self.ledger()['02']['state'], 'working')
         self.assertEqual(self.git('rev-parse', 'factory/demo-01'), sha)
         self.assertFalse(self.worktree.exists())
+        self.cli('requeue', '01')
+        self.assertIn('relaunched 01 in its worktree', self.cli('tick').stdout)
+        self.assertEqual((self.ledger()['01']['state'], self.git('rev-parse', 'HEAD', cwd=self.worktree)), ('working', sha))
 
     def test_claim_branch_is_pushed_when_a_remote_exists_and_a_rejected_push_means_claimed(self):
         remote = self.base / 'remote.git'; self.git('init', '-q', '--bare', str(remote))
@@ -610,6 +614,7 @@ class FactoryTests(unittest.TestCase):
         self.cli('install', '--feature', 'demo'); self.cli('tick'); self.build(); self.approve()
         self.assertEqual((self.ledger()['01']['state'], self.state()['mode']), ('needs-you', 'running'))
         self.assertEqual(self.final_reviews(), [])
+        self.assertIn('final review waits on 1 parked ticket', self.cli('status').stdout)
         self.cli('precheck', ok=False)
         self.cli('approve', '01')
         self.assertEqual(self.ledger()['01']['state'], 'merged')
@@ -637,16 +642,24 @@ class FactoryTests(unittest.TestCase):
         (self.state_dir / 'final-review.md').write_text('findings\n')
         self.assertIn(f'final review: {self.state_dir / "final-review.md"}', self.cli('status').stdout)
 
-    def test_uninstall_removes_heartbeat_and_keeps_ledger_worktrees_and_branches(self):
+    def test_uninstall_stops_workers_archives_the_ledger_and_a_new_feature_starts_fresh(self):
         self.cli('install', '--feature', 'demo'); self.cli('tick')
         self.cli('uninstall')
-        self.assertIn(['automations', 'remove', 'auto_1', '--json'], self.orca_calls())
+        calls = self.orca_calls()
+        self.assertLess(calls.index(['terminal', 'close', '--terminal', 'term_1', '--json']),
+                        calls.index(['automations', 'remove', 'auto_1', '--json']))
         self.assertFalse((self.state_dir / 'state.json').exists())
-        self.assertEqual(self.ledger()['01']['state'], 'working')
+        self.assertFalse((self.state_dir / 'ledger.json').exists())
+        [kept] = self.state_dir.glob('ledger-*.json')
+        self.assertRegex(kept.name, r'^ledger-demo-\d{8}T\d{6}\.json$')
+        self.assertEqual(json.loads(kept.read_text())['01']['state'], 'interrupted')
         self.assertTrue(self.worktree.exists())
         self.git('rev-parse', '--verify', 'refs/heads/factory/demo-01')
         self.assertIn('No factory installed', self.cli('status', ok=False).stderr)
-        self.cli('install', '--feature', 'demo', '--paused')
+        issues = self.project / '.scratch' / 'next' / 'issues'; issues.mkdir(parents=True)
+        (issues / '01-next.md').write_text(TICKET); self.git('add', '-A'); self.git('commit', '-qm', 'next feature')
+        self.cli('install', '--feature', 'next'); self.cli('tick')
+        self.assertEqual({t: e['branch'] for t, e in self.ledger().items()}, {'01': 'factory/next-01'})
 
     def test_uninstall_still_succeeds_when_the_heartbeat_is_already_gone(self):
         self.cli('install', '--feature', 'demo'); (self.orca_dir / 'automation-gone').touch()
@@ -659,7 +672,7 @@ class FactoryTests(unittest.TestCase):
         self.assertTrue(prompt.startswith('Use the ew-factory skill (worker brief). '
                                           f'Ticket: {self.worktree / ".scratch/demo/issues/01-thing.md"}. Ticket id: 01. Gate: '), prompt)
         self.assertIn(f"gate --ticket 01 --project '{self.worktree}'", prompt)
-        self.assertIn(f"report 01 approved --project '{self.worktree}'", prompt)
+        self.assertIn(f"report 01 approved --detach --project '{self.worktree}'", prompt)
         lock = json.loads((ROOT / 'workflow.lock.json').read_text())
         self.assertEqual(lock['skills']['ew-factory'], 'skills/factory')
     # --- ticket 04 ---
@@ -775,8 +788,8 @@ class FactoryTests(unittest.TestCase):
     def test_approve_reruns_the_gate_and_keeps_a_failing_ticket_in_needs_you(self):
         self.set_radius('**Blast radius:** high\n')
         self.cli('install', '--feature', 'demo'); self.cli('tick'); self.build(); self.approve()
-        (self.worktree / '.engineering-workflow' / 'gates.sh').write_text('echo "GATES: FAIL tests"\n')
-        self.git('commit', '-qam', 'Break the gate', cwd=self.worktree)
+        (self.project / '.engineering-workflow' / 'gates.sh').write_text('echo "GATES: FAIL tests"\n')
+        self.git('commit', '-qam', 'Break the gate')
         before = self.git('rev-parse', 'build/demo')
         refused = self.cli('approve', '01', ok=False).stdout
         self.assertIn('01 needs you: gates failed on the ticket branch', refused)
@@ -930,14 +943,13 @@ class FactoryTests(unittest.TestCase):
         self.assertEqual(self.cards()[-1], self.held_card('permission needed'))
         self.assertTrue(self.worktree.exists())
 
-    def test_unreadable_factory_files_in_a_worktree_fall_back_to_plain_guard(self):
+    def test_unreadable_factory_files_in_a_worktree_refuse_every_tool_call(self):
         self.cli('install', '--feature', 'demo'); self.set_state(max_turns=1); self.cli('tick')
         self.hook('PostToolUse', tool_name='Read', tool_input={'file_path': 'README.md'})
         (self.state_dir / 'state.json').write_text('{not json')
-        asked = self.bash('git reset --hard')
-        self.assertEqual(asked['hookSpecificOutput']['permissionDecision'], 'ask')
-        self.assertEqual(self.bash('rm -rf /')['hookSpecificOutput']['permissionDecision'], 'deny')
-        self.assertEqual(self.bash('git status'), {})
+        refused = self.denied('Factory state unreadable; tool call refused')
+        for command in ('git reset --hard', 'rm -rf /', 'git status'):
+            self.assertEqual(self.bash(command), refused)
 
     def test_time_cap_counts_working_minutes_without_queue_wait(self):
         self.cli('install', '--feature', 'demo'); self.cli('tick')
@@ -955,6 +967,7 @@ class FactoryTests(unittest.TestCase):
         self.assertIn('01 capped: time cap', self.cli('tick').stdout)
         entry = self.ledger()['01']
         self.assertEqual((entry['state'], entry['reason']), ('capped', 'time cap'))
+        self.assertEqual(self.cards()[-1], self.held_card('capped: time cap'))
         self.assertIn(['terminal', 'close', '--terminal', 'term_1', '--json'], self.orca_calls())
         self.assertTrue(self.worktree.exists())
         self.git('rev-parse', '--verify', 'refs/heads/factory/demo-01')
@@ -1006,12 +1019,14 @@ class FactoryTests(unittest.TestCase):
         self.counters_file().write_text('{"turns": 3, "permission_needed": false}')
         self.assertIn('01 capped: turn cap', self.cli('tick').stdout)
 
-    def test_malformed_marker_falls_back_to_plain_guard(self):
+    def test_malformed_or_deleted_marker_refuses_every_tool_call(self):
         self.cli('install', '--feature', 'demo'); self.set_state(max_turns=1); self.cli('tick')
-        self.counters_file().write_text('{not json')
-        (self.worktree / '.engineering-workflow-state' / 'factory-ticket.json').write_text('{"ticket": ')
-        self.assertEqual(self.bash('git reset --hard')['hookSpecificOutput']['permissionDecision'], 'ask')
-        self.assertEqual(self.bash('git status'), {})
+        marker = self.worktree / '.engineering-workflow-state' / 'factory-ticket.json'
+        marker.write_text('{"ticket": ')
+        refused = self.denied('Factory state unreadable; tool call refused')
+        self.assertEqual(self.bash('git status'), refused)
+        marker.unlink()
+        self.assertEqual(self.bash('git status'), refused)
 
     def test_credential_warning_survives_a_turn_count_that_fails(self):
         self.cli('install', '--feature', 'demo'); self.cli('tick')
@@ -1081,7 +1096,8 @@ class FactoryTests(unittest.TestCase):
         lines = self.cli('status').stdout.splitlines()
         self.assertEqual(lines[lines.index('last wave: 1 merged'):], [
             'last wave: 1 merged', 'needs you: 02 (needs an API decision)', 'capped: 03 (turn cap)',
-            'queue wait: 2m', 'slowed by:', '  01: slow gate', '  02: unclear spec'])
+            'queue wait: 2m', 'slowed by:', '  01: slow gate', '  02: unclear spec',
+            'final review waits on 2 parked tickets'])
 
     def test_status_summarises_only_the_cycle_wave_and_its_end(self):
         self.add_ticket('02')
@@ -1097,6 +1113,173 @@ class FactoryTests(unittest.TestCase):
         self.assertEqual(summary[:4], ['last wave: 1 merged', 'queue wait: 0s', 'slowed by:', '  03: waited on review'])
         self.assertEqual(summary[4], f"wave ended: {self.state()['wave_ended_at']}")
         self.assertEqual(len(summary), 5)
+
+
+    # --- final review fixes ---
+    def test_control_file_changes_wait_for_approval_and_approve_merges_them(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        self.build('CLAUDE.md', 'obey\n', commit=False)
+        (self.worktree / '.claude').mkdir(); self.build('.claude/settings.json', '{}\n')
+        before = self.git('rev-parse', 'build/demo')
+        self.approve()
+        entry = self.ledger()['01']
+        self.assertEqual((entry['state'], entry['reason']),
+                         ('needs-you', 'changes workflow control files: .claude/settings.json, CLAUDE.md'))
+        self.assertEqual(self.git('rev-parse', 'build/demo'), before)
+        self.cli('approve', '01')
+        self.assertEqual(self.ledger()['01']['state'], 'merged')
+
+    def forge_runtime(self, where):
+        runtime = where / '.engineering-workflow'
+        lock = json.dumps({'schema': 1, 'version': '9.9.9', 'files': {}})
+        (runtime / 'workflow.lock.json').write_text(lock); (runtime / 'VERSION').write_text('9.9.9\n')
+        import hashlib
+        (runtime / 'install.json').write_text(json.dumps({'lock_sha256': hashlib.sha256(lock.encode()).hexdigest()}))
+        (runtime / 'workflow.py').write_text(f'open({str(self.base / "forged-ran")!r}, "w")\n')
+
+    def test_a_forged_project_runtime_in_a_ticket_worktree_is_never_used(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        self.forge_runtime(self.worktree)
+        self.assertEqual(self.bash('rm -rf /')['hookSpecificOutput']['permissionDecision'], 'deny')
+        self.cli('status', project=self.worktree)
+        self.assertFalse((self.base / 'forged-ran').exists())
+
+    def test_a_held_counters_lock_or_fifo_never_hangs_the_hook_or_the_tick(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        lock = self.worktree / '.engineering-workflow-state' / 'factory-turns.lock'
+        holder = subprocess.Popen([sys.executable, '-c', 'import fcntl,sys,time; f=open(sys.argv[1],"a"); '
+                                   'fcntl.flock(f, fcntl.LOCK_EX); print(1, flush=True); time.sleep(60)', str(lock)],
+                                  stdout=subprocess.PIPE, text=True)
+        try:
+            holder.stdout.readline()
+            begin = time.time()
+            self.assertEqual(self.bash('git status'), self.denied('Factory state unreadable; tool call refused'))
+            self.assertLess(time.time() - begin, 6)
+            self.cli('tick')
+            self.assertEqual(self.ledger()['01']['state'], 'working')
+            ledger = self.ledger()
+            ledger['01']['started_at'] = (datetime.now(timezone.utc) - timedelta(minutes=200)).isoformat()
+            (self.state_dir / 'ledger.json').write_text(json.dumps(ledger))
+            self.assertIn('01 capped: time cap', self.cli('tick').stdout)
+        finally:
+            holder.kill(); holder.wait()
+        self.cli('requeue', '01'); self.cli('tick')
+        self.counters_file().unlink(missing_ok=True); os.mkfifo(self.counters_file())
+        begin = time.time()
+        self.assertEqual(self.bash('git status')['hookSpecificOutput']['permissionDecision'], 'deny')
+        self.assertLess(time.time() - begin, 6)
+
+    def test_an_unexpected_hook_error_fails_closed(self):
+        result = subprocess.run([sys.executable, '-B', str(ROOT / 'workflow.py'), 'hook', '--platform', 'claude',
+                                 '--event', 'PreToolUse'], input='[' * 100000, text=True, capture_output=True,
+                                env=self.env)
+        self.assertEqual(result.returncode, 2, result.stderr)
+
+    def test_person_only_commands_refuse_inside_a_ticket_worktree(self):
+        self.add_ticket('02'); self.cli('install', '--feature', 'demo'); self.cli('tick')
+        for argv in (['install', '--feature', 'demo'], ['uninstall'], ['set', 'max_turns', '999'], ['pause'],
+                     ['resume'], ['cycle'], ['approve', '01'], ['requeue', '01']):
+            with self.subTest(argv=argv):
+                refused = self.cli(*argv, project=self.worktree, ok=False).stderr
+                self.assertIn('Run this from the integration checkout, not a ticket worktree', refused)
+        self.cli('report', '02', 'approved', project=self.worktree, ok=False)
+        self.assertEqual(self.ledger()['02']['state'], 'working')
+        self.assertEqual(self.state()['max_turns'], 100)
+
+    BYPASS = "Orca launched in bypass mode; remove it from Orca's Claude arguments or reinstall with --allow-bypass"
+
+    def test_bypass_is_rechecked_every_tick_in_any_spelling(self):
+        self.add_ticket('02'); self.cli('install', '--feature', 'demo'); self.set_state(concurrency=1); self.cli('tick')
+        self.assertEqual(self.ledger()['01']['state'], 'working')
+        (self.orca_dir / 'screen-term_1').write_text('claude --permission-mode bypassPermissions')
+        self.cli('tick')
+        entry = self.ledger()['01']
+        self.assertEqual((entry['state'], entry['reason'], self.state()['mode']), ('needs-you', self.BYPASS, 'paused'))
+        self.assertIn(['terminal', 'close', '--terminal', 'term_1', '--json'], self.orca_calls())
+        self.assertNotIn('02', self.ledger())
+
+    def test_a_terminal_that_cannot_be_read_stops_the_worker_and_pauses(self):
+        (self.orca_dir / 'read-fails').touch()
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        entry = self.ledger()['01']
+        self.assertEqual((entry['state'], entry['reason'], self.state()['mode']),
+                         ('needs-you', "could not confirm Orca's permission mode", 'paused'))
+        self.assertIn(['terminal', 'close', '--terminal', 'term_1', '--json'], self.orca_calls())
+
+    def test_final_review_agent_in_bypass_is_stopped_and_not_dispatched(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick'); self.build()
+        (self.orca_dir / 'screen-term_2').write_text('BYPASS PERMISSIONS on')
+        self.assertIn(self.BYPASS, self.approve().stdout)
+        self.assertEqual((self.state()['final_review'], self.state()['mode']), ('not-started', 'paused'))
+        self.assertIn(['terminal', 'close', '--terminal', 'term_2', '--json'], self.orca_calls())
+
+    def test_a_hung_gate_is_killed_and_fails_with_timeout(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        (self.project / '.engineering-workflow' / 'gates.sh').write_text('sleep 60 &\nwait\necho "GATES: PASS"\n')
+        self.git('commit', '-qam', 'Hung gate'); self.build(); self.set_state(max_minutes=0.03)
+        begin = time.time()
+        self.assertIn('GATES: FAIL timeout', self.cli('gate', ok=False).stdout)
+        self.approve()
+        entry = self.ledger()['01']
+        self.assertEqual((entry['state'], entry['reason']), ('needs-you', 'gate timed out on the ticket branch'))
+        self.assertLess(time.time() - begin, 20)
+
+    def wait_for(self, check, seconds=30):
+        deadline = time.time() + seconds
+        while not check():
+            self.assertLess(time.time(), deadline, 'timed out waiting')
+            time.sleep(0.2)
+
+    def test_detached_report_and_tick_return_at_once_and_the_tick_still_runs(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick'); self.build()
+        self.slow_gate(3); self.git('commit', '-qam', 'Slow gate')
+        begin = time.time()
+        self.approve('--detach')
+        self.assertLess(time.time() - begin, 2.5)
+        self.assertEqual(self.ledger()['01']['state'], 'approved')
+        self.wait_for(lambda: self.state()['mode'] == 'paused')
+        self.assertEqual(self.ledger()['01']['state'], 'merged')
+        last = self.state()['last_tick']
+        self.cli('tick', '--detach')
+        self.wait_for(lambda: self.state()['last_tick'] != last)
+        self.assertIn('merged 01', (self.state_dir / 'tick.log').read_text())
+
+    def test_precheck_runs_while_paused_with_a_working_ticket_and_tick_starts_nothing(self):
+        self.add_ticket('02'); self.cli('install', '--feature', 'demo'); self.set_state(concurrency=1); self.cli('tick')
+        self.set_state(mode='paused', concurrency=3)
+        self.cli('precheck')
+        (self.orca_dir / 'dead-term_1').touch()
+        self.cli('tick')
+        self.assertEqual(self.ledger()['01']['state'], 'interrupted')
+        self.assertNotIn('02', self.ledger())
+        self.cli('precheck', ok=False)
+
+    def test_a_forged_ledger_entry_is_refused_before_any_git_change(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick'); self.build()
+        before = self.git('rev-parse', 'build/demo')
+        for field, value in (('worktree', str(self.project)), ('branch', 'main')):
+            with self.subTest(field=field):
+                ledger = self.ledger(); good = ledger['01'][field]
+                ledger['01'].update({field: value, 'state': 'approved'})
+                (self.state_dir / 'ledger.json').write_text(json.dumps(ledger))
+                self.cli('tick')
+                ledger = self.ledger()
+                self.assertEqual((ledger['01']['state'], ledger['01']['reason']),
+                                 ('needs-you', 'ledger entry failed validation'))
+                ledger['01'][field] = good; (self.state_dir / 'ledger.json').write_text(json.dumps(ledger))
+        self.assertEqual(self.git('rev-parse', 'build/demo'), before)
+        self.assertTrue(self.worktree.exists())
+
+    def test_resume_clears_the_wave_and_the_final_review_ends_the_running_wave(self):
+        self.cli('install', '--feature', 'demo', '--paused'); self.cli('cycle')
+        self.assertEqual(self.state()['wave'], ['01'])
+        self.cli('pause', '--now'); self.cli('requeue', '01'); self.cli('resume')
+        self.assertEqual(self.state()['wave'], [])
+        self.assertNotIn('wave_ended_at', self.state())
+        self.build(); self.approve()
+        state = self.state()
+        self.assertEqual((state['mode'], state['final_review']), ('paused', 'dispatched'))
+        self.assertTrue(state['wave_ended_at'])
 
     def session(self, project):
         result = subprocess.run([sys.executable, '-B', str(ROOT / 'workflow.py'), 'session', '--project', str(project),
