@@ -524,14 +524,15 @@ SHELL_TOOLS = ("Bash", "exec_command", "shell_command", "run_shell_command", "ru
 
 
 def own_blocked_report(command, ticket):
-    """True only for `<python> <dir>/workflow.py factory report <ticket> blocked` plus
-    --reason X, --slowed-by X, --project X, --detach, each at most once: what a capped worker may still run."""
+    """True only for `<sys.executable> <ROOT>/workflow.py factory report <ticket> blocked` (factory.workflow_command)
+    plus --reason X, --slowed-by X, --project X, --detach, each at most once: what a capped worker may still run."""
     if any(c in command for c in ";&|`$<>()\n\r\\"): return False
     try: words = shlex.split(command)
     except ValueError: return False
-    if (len(words) < 6 or not re.fullmatch(r"python[0-9.]*", Path(words[0]).name)
-            or Path(words[1]).name != "workflow.py" or words[2:6] != ["factory", "report", ticket, "blocked"]):
-        return False
+    if len(words) < 6 or words[2:6] != ["factory", "report", ticket, "blocked"]: return False
+    # Absolute and exact, so nothing the worker planted (a python3, a workflow.py) can stand in.
+    exact = lambda word, real: os.path.isabs(word) and os.path.realpath(word) == os.path.realpath(real)
+    if not (exact(words[0], sys.executable) and exact(words[1], ROOT / "workflow.py")): return False
     seen, rest = set(), words[6:]
     while rest:
         flag = rest.pop(0)

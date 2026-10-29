@@ -924,7 +924,7 @@ class FactoryTests(unittest.TestCase):
         self.hook('PostToolUse', tool_name='Read', tool_input={'file_path': 'README.md'})
         capped = self.denied('Factory turn cap reached; run factory report 01 blocked')
         base = shlex.join([sys.executable, str(ROOT / 'workflow.py'), 'factory', 'report'])
-        allowed = [f'{base} 01 blocked', f'python3 {shlex.quote(str(ROOT))}/workflow.py factory report 01 blocked',
+        allowed = [f'{base} 01 blocked',
                    f'{base} 01 blocked --reason "needs an API decision" --slowed-by spec',
                    f'{base} 01 blocked --detach --project {shlex.quote(str(self.worktree))} --reason stuck']
         for command in allowed:
@@ -935,7 +935,10 @@ class FactoryTests(unittest.TestCase):
                   f'{base} 01 blocked --allow-bypass', f'{base} 01 blocked --reason a --reason b',
                   f'{base} 01 blocked --reason', f'{base} 01 blocked --reason=x', f'{base} 01 blocked | tee x',
                   f'{base} 01 blocked > x', f'sh {ROOT}/workflow.py factory report 01 blocked',
-                  f'{sys.executable} {ROOT}/other.py factory report 01 blocked', f'{base} 01 blocked "unclosed']
+                  f'{sys.executable} {ROOT}/other.py factory report 01 blocked', f'{base} 01 blocked "unclosed',
+                  f'python3 {shlex.quote(str(ROOT))}/workflow.py factory report 01 blocked',  # another python
+                  shlex.join([sys.executable, str(self.worktree / 'workflow.py'), 'factory', 'report', '01', 'blocked']),
+                  shlex.join([sys.executable, 'workflow.py', 'factory', 'report', '01', 'blocked'])]
         for command in denied:
             with self.subTest(denied=command): self.assertEqual(self.bash(command), capped)
         read = {'tool_name': 'Read', 'tool_input': {'file_path': 'README.md'}}

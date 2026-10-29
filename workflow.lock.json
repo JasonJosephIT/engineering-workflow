@@ -159,7 +159,7 @@
     "vendor/mattpocock/skills/productivity/writing-for-agents/SKILL-MECHANICS.md": "c768e6307c7c10728c401c213f2c4ba71c542127eeb7ad2956aabd15a0fa0059",
     "vendor/mattpocock/skills/productivity/writing-for-agents/SKILL.md": "7e3a8a88fc251fae5224405967fc7731313c2767c732cdf77c78a4855a682580",
     "vendor/mattpocock/skills/productivity/writing-for-agents/agents/openai.yaml": "eacb24b2a618cfb81dacb0416f4fdd75ddf3a8060f8ddb99aae1b1e301907e4b",
-    "workflow.py": "b5d9316be51aaa9f41250fa7adbf146a31942c11b45a154ffdd73014a89d07f0"
+    "workflow.py": "d189076e92152c1fa498370e30b310996e03a9f4e4860ee71bf00efc4b218209"
   },
   "name": "engineering-workflow",
   "release": "v0.3.0",
