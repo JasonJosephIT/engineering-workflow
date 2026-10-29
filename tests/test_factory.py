@@ -30,6 +30,7 @@ def reply(ok=True, **result): print(json.dumps({{'ok': ok, 'result': result}}))
 if (control / 'non-dict').exists(): print('[]')
 elif words.startswith('repo show'): reply(ok=not (control / 'unregistered').exists())
 elif words.startswith('automations create'): reply(automation={{'id': 'auto_1'}})
+elif words.startswith('automations remove'): reply(ok=not (control / 'automation-gone').exists())
 elif words.startswith('agent launch') and (control / 'launch-fails').exists():
     print(json.dumps({{'ok': False, 'error': {{'code': 'runtime_error', 'message': 'no workspace for path'}}}}))
 elif words.startswith('agent launch'):
@@ -570,6 +571,97 @@ class FactoryTests(unittest.TestCase):
         self.git('--git-dir', str(remote), 'rev-parse', '--verify', 'refs/heads/factory/demo-02')
 
 
+    # --- ticket 09 ---
+
+    def final_reviews(self): return [c for c in self.launches() if f'path:{self.project}' in c]
+
+    def test_final_review_runs_once_in_the_integration_checkout_then_pauses(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        self.build(); self.approve()
+        self.assertEqual(self.ledger()['01']['state'], 'merged')
+        reviews = self.final_reviews()
+        self.assertEqual(len(reviews), 1)
+        prompt = reviews[0][reviews[0].index('--prompt') + 1]
+        self.assertIn('Use the ew-factory skill (final review brief) for demo on build/demo', prompt)
+        self.assertIn(str(self.state_dir / 'final-review.md'), prompt)
+        state = self.state()
+        self.assertEqual((state['final_review'], state['final_review_handle'], state['mode']),
+                         ('dispatched', 'term_2', 'paused'))  # the fake numbers each launch
+        self.cli('resume'); self.cli('tick')
+        self.assertEqual(len(self.final_reviews()), 1)
+
+    def test_final_review_waits_while_tickets_are_ready_or_working(self):
+        self.add_ticket('02', blocked='01'); self.cli('install', '--feature', 'demo'); self.cli('tick')
+        self.cli('tick')
+        self.assertEqual(self.final_reviews(), [])
+        self.finish('01')
+        self.assertEqual((self.ledger()['02']['state'], self.state()['mode']), ('working', 'running'))
+        self.assertEqual(self.final_reviews(), [])
+
+    def test_requeued_ticket_held_by_the_daily_cap_blocks_the_final_review(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick'); self.cli('pause', '--now')
+        self.cli('requeue', '01'); self.set_state(daily_ticket_cap=1)
+        self.cli('resume')
+        self.assertEqual((self.ledger()['01']['state'], self.state()['mode']), ('ready', 'running'))
+        self.assertEqual(self.final_reviews(), [])
+
+    def test_held_high_radius_ticket_blocks_the_final_review_until_approve_merges_it(self):
+        self.set_radius('**Blast radius:** high\n')
+        self.cli('install', '--feature', 'demo'); self.cli('tick'); self.build(); self.approve()
+        self.assertEqual((self.ledger()['01']['state'], self.state()['mode']), ('needs-you', 'running'))
+        self.assertEqual(self.final_reviews(), [])
+        self.cli('precheck', ok=False)
+        self.cli('approve', '01')
+        self.assertEqual(self.ledger()['01']['state'], 'merged')
+        self.cli('precheck')
+        self.cli('tick')
+        self.assertEqual((len(self.final_reviews()), self.state()['mode']), (1, 'paused'))
+        self.set_state(mode='running')
+        self.cli('precheck', ok=False)
+
+    def test_no_final_review_when_no_ticket_was_ever_started(self):
+        (self.project / '.scratch' / 'demo' / 'issues' / '01-thing.md').write_text(TICKET.replace('ready-for-agent', 'needs-triage'))
+        self.git('commit', '-qam', 'triage'); self.cli('install', '--feature', 'demo'); self.cli('tick')
+        self.assertEqual((self.launches(), self.state()['mode']), ([], 'running'))
+
+    def test_failed_final_review_launch_still_pauses_without_dispatching(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick'); self.build()
+        (self.orca_dir / 'launch-fails').touch()
+        out = self.approve().stdout
+        self.assertIn('final review launch failed', out)
+        self.assertEqual((self.state()['final_review'], self.state()['mode']), ('not-started', 'paused'))
+
+    def test_status_shows_the_final_review_file_once_written(self):
+        self.cli('install', '--feature', 'demo')
+        self.assertNotIn('final review', self.cli('status').stdout)
+        (self.state_dir / 'final-review.md').write_text('findings\n')
+        self.assertIn(f'final review: {self.state_dir / "final-review.md"}', self.cli('status').stdout)
+
+    def test_uninstall_removes_heartbeat_and_keeps_ledger_worktrees_and_branches(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        self.cli('uninstall')
+        self.assertIn(['automations', 'remove', 'auto_1', '--json'], self.orca_calls())
+        self.assertFalse((self.state_dir / 'state.json').exists())
+        self.assertEqual(self.ledger()['01']['state'], 'working')
+        self.assertTrue(self.worktree.exists())
+        self.git('rev-parse', '--verify', 'refs/heads/factory/demo-01')
+        self.assertIn('No factory installed', self.cli('status', ok=False).stderr)
+        self.cli('install', '--feature', 'demo', '--paused')
+
+    def test_uninstall_still_succeeds_when_the_heartbeat_is_already_gone(self):
+        self.cli('install', '--feature', 'demo'); (self.orca_dir / 'automation-gone').touch()
+        self.assertIn('heartbeat', self.cli('uninstall').stdout)
+        self.assertFalse((self.state_dir / 'state.json').exists())
+
+    def test_workers_launch_with_the_ew_factory_worker_brief(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        prompt = self.launches()[0][self.launches()[0].index('--prompt') + 1]
+        self.assertTrue(prompt.startswith('Use the ew-factory skill (worker brief). '
+                                          f'Ticket: {self.worktree / ".scratch/demo/issues/01-thing.md"}. Ticket id: 01. Gate: '), prompt)
+        self.assertIn(f"gate --ticket 01 --project '{self.worktree}'", prompt)
+        self.assertIn(f"report 01 approved --project '{self.worktree}'", prompt)
+        lock = json.loads((ROOT / 'workflow.lock.json').read_text())
+        self.assertEqual(lock['skills']['ew-factory'], 'skills/factory')
     # --- ticket 04 ---
     def set_radius(self, line):
         ticket = self.project / '.scratch' / 'demo' / 'issues' / '01-thing.md'

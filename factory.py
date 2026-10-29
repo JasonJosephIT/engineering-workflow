@@ -78,6 +78,10 @@ def register_heartbeat(state):
     return (result.get("automation") or {}).get("id") or result.get("id")
 
 
+def remove_heartbeat(automation_id):
+    orca("automations", "remove", automation_id)
+
+
 def launch_worker(worktree, prompt):
     result = orca("agent", "launch", "--agent", "claude", "--worktree", f"path:{worktree}",
                   "--surface", "terminal", "--prompt", prompt)
@@ -311,10 +315,15 @@ def merge_approved(state, ledger, out):
 
 def worker_brief(state, ticket, worktree):
     path = Path(worktree) / Path(ticket["path"]).relative_to(state["integration_checkout"])
-    return (f"You are a factory worker. Implement the ticket {path} on this worktree's branch only. "
-            f"Run the gates with: {workflow_command('gate', '--ticket', ticket['id'], '--project', worktree)} and commit your work. "
-            f"Finish with: {workflow_command('report', ticket['id'], 'approved', '--project', worktree)}"
-            f' --slowed-by "<one line>" (or report blocked --reason "<one line>").')
+    return (f"Use the ew-factory skill (worker brief). Ticket: {path}. Ticket id: {ticket['id']}. "
+            f"Gate: {workflow_command('gate', '--ticket', ticket['id'], '--project', worktree)}. "
+            f"Report: {workflow_command('report', ticket['id'], 'approved', '--project', worktree)}"
+            f' --slowed-by "<one line>" (blocked instead of approved, plus --reason "<one line>", if stuck).')
+
+
+def final_review_brief(state):
+    return (f"Use the ew-factory skill (final review brief) for {state['feature']} on {state['integration_branch']}; "
+            f"write findings to {Path(state['state_dir']) / 'final-review.md'}.")
 
 
 def claim(state, ledger, ticket):
@@ -463,6 +472,25 @@ def wave_settled(state, ledger, ticket):
     return claimed or ticket not in [t["id"] for t in startable(state, ledger)]
 
 
+def review_due(state, ledger):
+    """The whole feature is done: every started ticket merged (none waiting on the person) and nothing startable."""
+    return (state["mode"] == "running" and state["final_review"] == "not-started" and bool(ledger)
+            and all(e["state"] == "merged" for e in ledger.values()) and not startable(state, ledger))
+
+
+def final_review(state, ledger, out):
+    """One review agent in the integration checkout once the feature is done, then pause."""
+    if not review_due(state, ledger): return
+    try:
+        state["final_review_handle"] = launch_worker(state["integration_checkout"], final_review_brief(state))
+        state["final_review"] = "dispatched"
+        out.append("final review dispatched")
+    except ValueError as error:  # no retry every hour: the person resumes once Orca is fixed
+        out.append(f"final review launch failed: {error}")
+    state["mode"] = "paused"
+    out.append("factory paused")
+
+
 def update_mode(state, ledger, out):
     """draining -> paused once nothing is in flight; once -> paused once every wave ticket is settled."""
     if state["mode"] == "draining" and not in_flight(ledger):
@@ -482,6 +510,7 @@ def tick(directory):
             enforce_caps(state, ledger, out)
             merge_approved(state, ledger, out)
             start_tickets(state, ledger, out)
+            final_review(state, ledger, out)
             update_mode(state, ledger, out)
             state["last_tick"] = now()
         finally:  # keep merges and claims made before any failure
@@ -522,13 +551,27 @@ def install(args):
     print(f"Factory installed for {args.feature} on {branch} ({state['mode']})")
 
 
+def uninstall(args):
+    directory = state_dir(args.project)
+    with tick_lock(directory):
+        state, _ = load(directory)
+        try:
+            if state["automation_id"]: remove_heartbeat(state["automation_id"])
+        except ValueError as error:
+            print(f"heartbeat not removed ({error}); uninstalling anyway")
+        (directory / "state.json").unlink()
+    print("Factory uninstalled; the ledger, worktrees and branches are kept")
+
+
 def status(args):
-    state, ledger = load(state_dir(args.project))
+    directory = state_dir(args.project)
+    state, ledger = load(directory)
     count = lambda name: sum(e["state"] == name for e in ledger.values())
     print(f"factory: {state['mode']} · {len(ready_tickets(state, ledger))} ready"
           f" · {count('working')} building · {count('needs-you')} needs you")
     for ticket, entry in sorted(ledger.items()):
         print(" ".join(filter(None, [ticket, entry["state"], entry["branch"], entry["reason"]])))
+    if (directory / "final-review.md").is_file(): print(f"final review: {directory / 'final-review.md'}")
 
 
 def gate(args):
@@ -592,7 +635,8 @@ def requeue(args):
 
 def precheck(args):
     state, ledger = load(state_dir(args.project))
-    work = in_flight(ledger) or (free_room(state, ledger) > 0 and startable(state, ledger))
+    work = (in_flight(ledger) or (free_room(state, ledger) > 0 and startable(state, ledger))
+            or review_due(state, ledger))
     return 0 if state["mode"] != "paused" and work else 1
 
 
@@ -639,9 +683,8 @@ def cycle(args):
 
 def add_parser(sub):
     f = sub.add_parser("factory", help="Unattended per-ticket builds through Orca")
-    f.add_argument("action", choices=("install", "status", "tick", "gate", "report", "precheck",
-                                      "pause", "resume", "cycle",
-                                      "approve", "requeue"))
+    f.add_argument("action", choices=("install", "uninstall", "status", "tick", "gate", "report", "precheck",
+                                      "pause", "resume", "cycle", "approve", "requeue"))
     f.add_argument("ticket", nargs="?"); f.add_argument("result", nargs="?")
     f.add_argument("--project", default="."); f.add_argument("--feature")
     f.add_argument("--integration-branch", help="Default: the branch checked out in the project")
@@ -652,7 +695,8 @@ def add_parser(sub):
 
 
 def run(args):
-    actions = {"install": install, "status": status, "gate": gate, "report": report, "precheck": precheck,
+    actions = {"install": install, "uninstall": uninstall, "status": status, "gate": gate, "report": report,
+               "precheck": precheck,
                "tick": lambda a: tick(state_dir(a.project)),
                "pause": pause, "resume": resume, "cycle": cycle,
                "approve": approve, "requeue": requeue}

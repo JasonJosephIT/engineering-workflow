@@ -60,7 +60,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(parsed["env"], {"CUSTOM": "preserve"})
         self.assertEqual(parsed["permissions"], {"deny": ["Bash(sudo *)"]})
         self.assertTrue(list((self.project / ".workflow-backups").glob("*/AGENTS.md")))
-        self.assertEqual(len(list((self.project / ".agents/skills").iterdir())), 42)
+        self.assertEqual(len(list((self.project / ".agents/skills").iterdir())), 43)
 
     def test_idempotent_install_no_duplicate_hooks_or_blocks(self):
         self.install()
