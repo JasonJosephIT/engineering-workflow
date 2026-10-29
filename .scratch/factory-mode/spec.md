@@ -68,8 +68,8 @@ when too much is waiting.
 33. As a developer, I want disabling the automation in Orca's UI to act as a hard pause, so that I can stop it from Orca without a terminal.
 34. As a developer, I want `factory status` to print one line like `factory: paused · 4 ready · 2 building · 1 needs you · held` plus the details, so that I know the state at a glance.
 35. As a developer, I want that status line in every session-start report for the repo, so that I see where the factory is the moment I open a session.
-36. As a developer, I want a digest after each wave listing merges, waiting items, caps, queue wait and the slowed-by lines, so that I can review a night's work in a minute.
-37. As a developer, I want `factory set <setting> <value>` for concurrency, build slots, caps and the pile limit, so that I can tune without reinstalling.
+36. As a developer, I want `factory status` to summarise the last wave (merges, waiting items, caps, queue wait, slowed-by lines) from the ledger, so that I can review a night's work in a minute.
+37. As a developer, I want concurrency, build slots, caps and the pile limit read from the factory's state file each tick, so that I can tune them by editing one file without reinstalling.
 38. As a developer, I want `factory uninstall` to remove the heartbeat but keep the ledger and worktrees, so that removing the factory never destroys work.
 39. As a developer, I want the factory never to merge or push to main, deploy, publish issues or use bypass permissions, so that unattended runs stay inside the limits I already trust.
 40. As a developer, I want all factory state on disk and every agent session fresh, so that nothing depends on chat history or context compaction.
@@ -82,7 +82,7 @@ when too much is waiting.
 
 - New `factory` module, wired into the CLI the same way the reviews module is
   (`add_parser` / `run`), exposing `workflow.py factory <action>` with actions:
-  `install`, `uninstall`, `status`, `set`, `pause` (`--now`), `resume`, `cycle`,
+  `install`, `uninstall`, `status`, `pause` (`--now`), `resume`, `cycle`,
   `tick`, `precheck`, `gate`, `report`, `approve`, `requeue`. Added to the package's
   file list and release lock like the existing modules.
 - An **Orca adapter** inside that module: the only code that calls the `orca` CLI
@@ -108,8 +108,11 @@ install makes sure is git-ignored)
 - `ledger.json`: one entry per ticket: `state`, `branch`, `worktree`,
   `worker_handle`, `started_at`, `turns`, `queue_wait_seconds`,
   `gate_seconds`, `slowed_by`, `reason`, `history` (timestamped transitions).
-- `tick.lock` (exclusive `fcntl` lock), `slots/` (one lock file per build slot),
-  `digest.md` (appended per wave).
+- `tick.lock` (exclusive `fcntl` lock), `slots/` (one lock file per build slot).
+  Settings are edited by hand in `state.json`; `tick` re-reads them every run and
+  rejects invalid values with a clear error (ponytail: no `set` command until
+  hand-editing proves error-prone). No separate digest file: `status` summarises the
+  last wave from the ledger.
 - Each ticket worktree gets a small marker file in its own ignored state dir naming
   the ticket id and the absolute path of the factory state, so hooks running inside
   the worktree find the ledger without relying on environment variables.
@@ -157,8 +160,8 @@ ticket is ready, working or approved.
 6. Final review: in `running`, when nothing is ready, working or approved and the
    final review hasn't been dispatched, launch one agent in the integration checkout
    with the final-review brief, then pause.
-7. Mode bookkeeping, card updates for every ticket whose state changed, digest
-   append when a wave ends.
+7. Mode bookkeeping and card updates for every ticket whose state changed; the
+   wave's end time is recorded so `status` can summarise it.
 
 **`precheck`** exits 0 only when mode is not `paused` and `tick` has something to do
 (ready tickets with free capacity and not held, working tickets to check, or approved
@@ -197,8 +200,8 @@ for the same project refuses.
 
 **Final review brief** uses multi-model-review when installed, otherwise
 ew-matt-code-review then ew-ponytail-review, plus security review when the diff
-touches auth, secrets, payments or trust boundaries; findings go to the digest and
-the integration card. The factory never runs finishing-a-development-branch.
+touches auth, secrets, payments or trust boundaries; findings go to the ledger (shown by
+`status`) and the integration card. The factory never runs finishing-a-development-branch.
 
 ## Testing Decisions
 

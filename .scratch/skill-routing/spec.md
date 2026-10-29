@@ -50,26 +50,24 @@ dashboard reads.
 20. As a developer, I want each add-on pinned to a tag, a commit and the hashes of its files, so that what runs is exactly what I installed.
 21. As a developer, I want add-ons verified at every session start like EW's own skills, so that tampering or drift is caught.
 22. As a developer, I want a tampered or drifted add-on reported and not used, so that a changed skill never runs silently.
-23. As a developer, I want `addon list` to show each add-on's name, version, platforms and verification state, so that I can see what I have.
-24. As a developer, I want `addon remove <name>` to unlink and delete one add-on and nothing else, so that removal is safe.
-25. As a developer, I want `addon install <name> <ref>` to install a specific tag, so that I can pin or roll back.
-26. As a developer, I want a Claude-only add-on (ew-flightdeck) skipped on Codex and Gemini with a report, so that other platforms don't break.
-27. As a developer, I want add-on installs to refuse to overwrite unmanaged skill folders, so that my own skills are never clobbered.
-28. As a developer, I want add-on installs to work for a user install and for a project pin, so that cloud sessions can get the same add-ons.
-29. As a developer, I want `workflow.py pack add <pack>` to link a domain pack's skills into one project, so that domain skills load only where they are useful.
-30. As a developer, I want `pack remove <pack>` to remove only that pack's links from the project, so that I can undo it cleanly.
-31. As a developer, I want packs defined in my own user configuration, not in the workflow repo, so that no machine paths are committed.
-32. As a developer, I want `pack list` to show packs available and packs linked in this project, so that I can see what's active.
-33. As a developer, I want `pack add` to refuse when a skill name in the pack collides with an existing skill in the project, so that nothing is shadowed silently.
-34. As a developer, I want `workflow.py ticket start|update|done` to write one small state file per ticket in progress, so that dashboards and later sessions can see live work.
-35. As a developer, I want factory mode to write the same ticket state files as SDD, so that one dashboard shows both.
-36. As a developer, I want permission checks (Guard ask or deny) inside a ticket's worktree recorded in that ticket's state file, so that the dashboard shows which tickets are waiting on a permission.
-37. As a developer, I want ticket state files kept in my local workflow state folder, outside any repo, so that nothing private is committed and every project shows in one place.
-38. As a developer, I want a finished ticket's state file removed (or marked done and pruned after a day), so that the dashboard shows only live work.
-39. As a developer, I want the ticket state file format documented and versioned, so that ew-flightdeck can rely on it.
-40. As a workflow maintainer, I want the routing table in the core workflow text for every platform, so that Claude, Codex, Gemini and Antigravity follow the same routes.
-41. As a workflow maintainer, I want add-on and pack code to use the standard library only and the existing CLI-subprocess test style, so that it matches the package.
-42. As a workflow maintainer, I want the add-on registry (known names and their repositories) in the package, so that `addon install graphify` needs no URL.
+23. As a developer, I want `addon remove <name>` to unlink and delete one add-on and nothing else, so that removal is safe.
+24. As a developer, I want `addon install <name> <ref>` to install a specific tag, so that I can pin or roll back.
+25. As a developer, I want a Claude-only add-on (ew-flightdeck) skipped on Codex and Gemini with a report, so that other platforms don't break.
+26. As a developer, I want add-on installs to refuse to overwrite unmanaged skill folders, so that my own skills are never clobbered.
+27. As a developer, I want add-on installs to work for a user install and for a project pin, so that cloud sessions can get the same add-ons.
+28. As a developer, I want `workflow.py pack add <pack>` to link a domain pack's skills into one project, so that domain skills load only where they are useful.
+29. As a developer, I want `pack remove <pack>` to remove only that pack's links from the project, so that I can undo it cleanly.
+30. As a developer, I want packs defined in my own user configuration, not in the workflow repo, so that no machine paths are committed.
+31. As a developer, I want `pack add` to refuse when a skill name in the pack collides with an existing skill in the project, so that nothing is shadowed silently.
+32. As a developer, I want `workflow.py ticket start|update|done` to write one small state file per ticket in progress, so that dashboards and later sessions can see live work.
+33. As a developer, I want factory mode to write the same ticket state files as SDD, so that one dashboard shows both.
+34. As a developer, I want permission checks (Guard ask or deny) inside a ticket's worktree recorded in that ticket's state file, so that the dashboard shows which tickets are waiting on a permission.
+35. As a developer, I want ticket state files kept in my local workflow state folder, outside any repo, so that nothing private is committed and every project shows in one place.
+36. As a developer, I want a finished ticket's state file removed (or marked done and pruned after a day), so that the dashboard shows only live work.
+37. As a developer, I want the ticket state file format documented and versioned, so that ew-flightdeck can rely on it.
+38. As a workflow maintainer, I want the routing table in the core workflow text for every platform, so that Claude, Codex, Gemini and Antigravity follow the same routes.
+39. As a workflow maintainer, I want add-on and pack code to use the standard library only and the existing CLI-subprocess test style, so that it matches the package.
+40. As a workflow maintainer, I want the add-on registry (known names and their repositories) in the package, so that `addon install graphify` needs no URL.
 
 ## Implementation Decisions
 
@@ -87,7 +85,7 @@ dashboard reads.
 
 **Add-ons (new `addon` module, wired like the reviews module)**
 
-- `workflow.py addon install <name> [<ref>] | list | remove <name>`, with the same
+- `workflow.py addon install <name> [<ref>] | remove <name>`, with the same
   `--scope user|project` and `--project` handling as install.
 - A small **registry** in the package maps add-on names to repository URL, skill
   folder(s) inside the repo, and supported platforms: graphify, multi-model-review,
@@ -109,8 +107,8 @@ dashboard reads.
 **Domain packs (new `pack` module)**
 
 - Packs are defined in a user-level packs file in the workflow's local state folder:
-  pack name → list of skill folder paths. EW ships no machine paths. `pack list` shows
-  definitions and which are linked in the current project.
+  pack name → list of skill folder paths. EW ships no machine paths. (ponytail: no `pack list`;
+  the packs file and the project's skill links already show it.)
 - `pack add <pack>` symlinks each skill into the project's platform skill folders and
   records the pack in the project's workflow identity file; `pack remove` removes
   exactly those links. Collisions with existing skills refuse before any write.

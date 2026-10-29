@@ -27,6 +27,14 @@ Both designs are merged to main. Factory spec and 10 tickets: `.scratch/factory-
 
 ## Decisions
 
+- 2026-10-29: Ponytail (full) governs all factory-mode and skill-routing work until
+  v0.4.0 is pushed: reuse what exists, stdlib first, shortest working diff, cut
+  speculative commands.
+- 2026-10-29: Ponytail cuts to both specs: no `factory set` (edit the factory
+  `state.json` by hand; `tick` validates it), no `digest.md` (`factory status`
+  summarises the last wave from the ledger), no `addon list` (the session report
+  shows add-ons), no `pack list` (the packs file and project links show it). Factory
+  ticket 08 updated to match.
 - 2026-10-28: Skill routing spec written (`.scratch/skill-routing/spec.md`,
   ready-for-agent), release v0.4.0. Settled: add-ons fetched by git tag and pinned by
   tag + commit + file hashes, verified at session start (tampered = reported, not
