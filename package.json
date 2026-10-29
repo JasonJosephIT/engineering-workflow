@@ -1,5 +1,5 @@
 {
-  "name": "@jasonjosephit/ares-workflow",
+  "name": "ares-workflow",
   "version": "0.3.0",
   "description": "Ares Workflow: one versioned engineering workflow for Claude Code, Codex, Gemini CLI and Antigravity.",
   "license": "SEE LICENSE IN LICENSE",
@@ -27,6 +27,7 @@
     "node": ">=18"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
   }
 }

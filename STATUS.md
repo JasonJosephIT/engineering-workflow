@@ -21,11 +21,13 @@ main is untouched (12c0318). Pushed; open as PR #6 against main, not merged. Bui
 4. First real factory run on a small feature to confirm the unverified Orca facts.
 5. Skill routing: spec written (`.scratch/skill-routing/spec.md`); next
    `/ew-matt-to-tickets` for it.
-6. npm: after v0.3.0 is tagged, `npm publish` it to GitHub Packages with a token that
-   has `write:packages`.
+6. npm: after v0.3.0 is tagged, `npm login` then `npm publish` from that tag.
 
 ## Decisions
 
+- 2026-10-29: Publish "Ares Workflow" publicly on npmjs.com as `ares-workflow`, so anyone
+  can `npx ares-workflow` with no token (overrides the GitHub Packages choice below).
+  The package's code and docs become public; the GitHub repos stay private.
 - 2026-10-29: Publish "Ares Workflow" privately on GitHub Packages as
   `@jasonjosephit/ares-workflow` (repos are private; public npm would expose the code).
   `package.json` + `bin/ares-workflow.js` (node wrapper running `python3 workflow.py`)

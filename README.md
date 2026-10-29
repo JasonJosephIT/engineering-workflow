@@ -18,16 +18,13 @@ python3 -B workflow.py install --scope user --platform codex --dry-run
 python3 -B workflow.py install --scope user --platform codex
 ```
 
-Or install the same files from GitHub Packages as `@jasonjosephit/ares-workflow`
-(Ares Workflow). This needs Node 18+, Python 3.11+ and a GitHub token with
-`read:packages`. Add the registry to `~/.npmrc` once, then run any
+Or install the same files from npm as `ares-workflow` (Ares Workflow), with no
+login and no repository access. This needs Node 18+ and Python 3.11+. Run any
 `workflow.py` command through `ares-workflow`:
 
 ```sh
-echo "@jasonjosephit:registry=https://npm.pkg.github.com" >> ~/.npmrc
-npm login --scope=@jasonjosephit --auth-type=legacy --registry=https://npm.pkg.github.com
-npx @jasonjosephit/ares-workflow verify --expected 0.3.0
-npx @jasonjosephit/ares-workflow install --scope user --platform codex
+npx ares-workflow verify --expected 0.3.0
+npx ares-workflow install --scope user --platform codex
 ```
 
 An npm install has no Git checkout, so its receipt records no source commit and
@@ -257,7 +254,7 @@ python3 -B workflow.py verify
 ```
 
 Bump VERSION, `package.json` and release references, regenerate the lock, review
-changes, commit, then tag that commit. Publish that tag to GitHub Packages with
-`npm publish` (needs a token with `write:packages`). `workflow.lock.json` pins package content and upstream source
+changes, commit, then tag that commit. Publish that tag to npm with `npm publish`
+(public; needs an npm login). `workflow.lock.json` pins package content and upstream source
 revisions. Native project build commands belong in that project's instructions.
 See [core/WORKFLOW.md](core/WORKFLOW.md), [SOURCES.md](SOURCES.md), and `adapters/`.
