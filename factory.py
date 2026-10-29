@@ -276,15 +276,25 @@ def launch(state, entry, ticket, out):
         out.append(f"worker {entry['worker_handle']} did not stop; close it in Orca")
 
 
-def start_tickets(state, ledger, out):
-    if state["mode"] != "running":
-        return
+def startable(state, ledger):
+    """Ready tickets this mode may start: all in running, the wave's in once, none otherwise."""
+    if state["mode"] == "running": return ready_tickets(state, ledger)
+    if state["mode"] == "once": return [t for t in ready_tickets(state, ledger) if t["id"] in state["wave"]]
+    return []
+
+
+def free_room(state, ledger):
+    """How many tickets may start now: concurrency minus working, within the UTC daily cap."""
     today = now()[:10]
     working = sum(e["state"] == "working" for e in ledger.values())
     started = sum(e["started_at"][:10] == today for e in ledger.values())
-    room = min(state["concurrency"] - working, state["daily_ticket_cap"] - started)
-    for ticket in ready_tickets(state, ledger):
-        if room <= 0 or state["mode"] != "running":  # launch() may pause the factory (bypass)
+    return min(state["concurrency"] - working, state["daily_ticket_cap"] - started)
+
+
+def start_tickets(state, ledger, out):
+    mode, room = state["mode"], free_room(state, ledger)
+    for ticket in startable(state, ledger):
+        if room <= 0 or state["mode"] != mode:  # launch() may pause the factory (bypass)
             break
         entry = claim(state, ledger, ticket)
         if entry is None:
@@ -294,6 +304,27 @@ def start_tickets(state, ledger, out):
             launch(state, entry, ticket, out)
 
 
+def in_flight(ledger): return any(e["state"] in ("working", "approved") for e in ledger.values())
+
+
+def wave_settled(state, ledger, ticket):
+    """Done for this wave: finished or parked, or never claimable here (no longer ready, or claimed elsewhere)."""
+    if ticket in ledger: return ledger[ticket]["state"] in ("merged", "needs-you", "capped", "interrupted")
+    branch = f"refs/heads/factory/{state['feature']}-{ticket}"
+    claimed = git("rev-parse", "--verify", "--quiet", branch, cwd=state["integration_checkout"]) is not None
+    return claimed or ticket not in [t["id"] for t in startable(state, ledger)]
+
+
+def update_mode(state, ledger, out):
+    """draining -> paused once nothing is in flight; once -> paused once every wave ticket is settled."""
+    if state["mode"] == "draining" and not in_flight(ledger):
+        state["mode"] = "paused"
+        out.append("drained; factory paused")
+    elif state["mode"] == "once" and all(wave_settled(state, ledger, t) for t in state["wave"]):
+        state["mode"], state["wave_ended_at"] = "paused", now()
+        out.append("wave done; factory paused")
+
+
 def tick(directory):
     with tick_lock(directory):
         state, ledger = load(directory)
@@ -301,6 +332,7 @@ def tick(directory):
         try:
             merge_approved(state, ledger, out)
             start_tickets(state, ledger, out)
+            update_mode(state, ledger, out)
             state["last_tick"] = now()
         finally:  # keep merges and claims made before any failure
             save(directory / "ledger.json", ledger)
@@ -377,23 +409,69 @@ def report(args):
 
 
 def precheck(args):
-    # ponytail: stub until ticket 05; skip only when paused.
-    state, _ = load(state_dir(args.project))
-    return 1 if state["mode"] == "paused" else 0
+    state, ledger = load(state_dir(args.project))
+    work = in_flight(ledger) or (free_room(state, ledger) > 0 and startable(state, ledger))
+    return 0 if state["mode"] != "paused" and work else 1
+
+
+def set_mode(directory, mode):
+    with tick_lock(directory):
+        state, ledger = load(directory)
+        if mode == "draining" and not in_flight(ledger): mode = "paused"
+        if mode == "once":
+            state["wave"] = [t["id"] for t in ready_tickets(state, ledger)]
+            state.pop("wave_ended_at", None)
+        state["mode"] = mode
+        save(directory / "state.json", state)
+    return mode
+
+
+def pause(args):
+    directory = state_dir(args.project)
+    if not args.now:
+        print(f"factory {set_mode(directory, 'draining')}")
+        return
+    with tick_lock(directory):
+        state, ledger = load(directory)
+        for ticket, entry in ledger.items():
+            if entry["state"] != "working":
+                continue
+            try: stopped = not entry["worker_handle"] or stop_worker(entry["worker_handle"])
+            except (ValueError, subprocess.SubprocessError): stopped = False  # what the adapter can raise
+            if not stopped: print(f"worker {entry['worker_handle']} did not stop; close it in Orca")
+            move(entry, "interrupted")
+            print(f"interrupted {ticket}; {entry['branch']} and its worktree are kept")
+        state["mode"] = "paused"
+        save(directory / "ledger.json", ledger)
+        save(directory / "state.json", state)
+    print("factory paused")
+
+
+def resume(args):
+    set_mode(state_dir(args.project), "running")
+    tick(state_dir(args.project))
+
+
+def cycle(args):
+    set_mode(state_dir(args.project), "once")
+    tick(state_dir(args.project))  # a manual Orca automation run ignores the precheck, so tick directly
 
 
 def add_parser(sub):
     f = sub.add_parser("factory", help="Unattended per-ticket builds through Orca")
-    f.add_argument("action", choices=("install", "status", "tick", "gate", "report", "precheck"))
+    f.add_argument("action", choices=("install", "status", "tick", "gate", "report", "precheck",
+                                      "pause", "resume", "cycle"))
     f.add_argument("ticket", nargs="?"); f.add_argument("result", nargs="?")
     f.add_argument("--project", default="."); f.add_argument("--feature")
     f.add_argument("--integration-branch", help="Default: the branch checked out in the project")
     f.add_argument("--paused", action="store_true"); f.add_argument("--allow-bypass", action="store_true")
     f.add_argument("--slowed-by"); f.add_argument("--reason")
+    f.add_argument("--now", action="store_true", help="pause: stop every worker now (keeps their worktrees)")
     f.add_argument("--ticket", dest="for_ticket", help="gate: record queue wait and run time on this ticket")
 
 
 def run(args):
     actions = {"install": install, "status": status, "gate": gate, "report": report, "precheck": precheck,
-               "tick": lambda a: tick(state_dir(a.project))}
+               "tick": lambda a: tick(state_dir(a.project)),
+               "pause": pause, "resume": resume, "cycle": cycle}
     return actions[args.action](args) or 0

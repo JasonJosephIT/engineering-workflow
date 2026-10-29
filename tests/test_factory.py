@@ -36,6 +36,7 @@ elif words.startswith('terminal read'):
     bypass = (control / 'bypass').exists()
     reply(text='claude --dangerously-skip-permissions' if bypass else 'claude')
 elif words.startswith('terminal close'): reply(ok=False)
+elif words.startswith('terminal show') and (control / 'show-fails').exists(): reply(ok=False)
 elif words.startswith('terminal show'): reply(terminal={{'connected': False, 'exitCause': 'closed'}})
 else: reply(ok=False)
 """
@@ -277,6 +278,135 @@ class FactoryTests(unittest.TestCase):
         self.assertTrue(self.state()['allow_bypass'])
         self.assertEqual((self.ledger()['01']['state'], self.state()['mode']), ('working', 'running'))
         self.assertFalse([c for c in self.orca_calls() if c[:1] == ['terminal']])
+
+    # --- ticket 05 (uses ticket 03's add_ticket, set_state and finish helpers) ---
+    def test_pause_drains_in_flight_work_then_pauses(self):
+        self.add_ticket('02')
+        self.cli('install', '--feature', 'demo'); self.set_state(concurrency=1); self.cli('tick')
+        self.cli('pause')
+        self.assertEqual(self.state()['mode'], 'draining')
+        self.cli('tick')
+        self.assertNotIn('02', self.ledger())
+        self.build(); self.approve()
+        self.assertEqual(self.ledger()['01']['state'], 'merged')
+        self.assertEqual(self.state()['mode'], 'paused')
+        self.assertNotIn('02', self.ledger())
+
+    def test_pause_with_nothing_in_flight_pauses_at_once(self):
+        self.cli('install', '--feature', 'demo')
+        self.cli('pause')
+        self.assertEqual(self.state()['mode'], 'paused')
+
+    def test_pause_now_stops_workers_and_keeps_their_work(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        self.build('half.txt', 'half done\n')
+        self.cli('pause', '--now')
+        entry = self.ledger()['01']
+        self.assertEqual((entry['state'], entry['branch']), ('interrupted', 'factory/demo-01'))
+        self.assertEqual(self.state()['mode'], 'paused')
+        self.assertIn(['terminal', 'close', '--terminal', 'term_1', '--json'], self.orca_calls())
+        self.assertEqual((self.worktree / 'half.txt').read_text(), 'half done\n')
+        self.assertEqual(self.git('show', 'factory/demo-01:half.txt'), 'half done')
+
+    def test_resume_sets_running_and_ticks(self):
+        self.cli('install', '--feature', 'demo', '--paused')
+        self.cli('resume')
+        self.assertEqual(self.state()['mode'], 'running')
+        self.assertEqual(self.ledger()['01']['state'], 'working')
+
+    def test_cycle_runs_one_wave_then_pauses(self):
+        self.add_ticket('02')
+        self.cli('install', '--feature', 'demo', '--paused')
+        self.cli('cycle')
+        self.assertEqual((self.state()['mode'], self.state()['wave']), ('once', ['01', '02']))
+        self.add_ticket('03')
+        self.cli('tick'); self.cli('tick')
+        ledger = self.ledger()
+        self.assertEqual((ledger['01']['state'], ledger['02']['state']), ('working', 'working'))
+        self.assertNotIn('03', ledger)
+        self.build(); self.approve()
+        self.assertEqual((self.ledger()['01']['state'], self.state()['mode']), ('merged', 'once'))
+        self.assertNotIn('wave_ended_at', self.state())
+        self.cli('report', '02', 'blocked', '--reason', 'unclear', '--slowed-by', 'spec', project=self.state_dir / 'worktrees' / 'demo-02')
+        state = self.state()
+        self.assertEqual(state['mode'], 'paused')
+        self.assertTrue(state['wave_ended_at'])
+        self.cli('tick')
+        self.assertNotIn('03', self.ledger())
+        self.cli('cycle')
+        self.assertEqual((self.state()['mode'], self.state()['wave']), ('once', ['03']))
+        self.assertNotIn('wave_ended_at', self.state())
+
+    def test_wave_ticket_claimed_elsewhere_does_not_keep_the_wave_open(self):
+        self.add_ticket('02')
+        self.git('branch', 'factory/demo-02', 'build/demo')  # claimed by someone else
+        self.cli('install', '--feature', 'demo', '--paused'); self.cli('cycle')
+        self.assertEqual(self.ledger()['01']['state'], 'working')
+        self.build(); self.approve()
+        self.assertNotIn('02', self.ledger())
+        self.assertEqual(self.state()['mode'], 'paused')
+
+    def test_wave_ticket_no_longer_ready_does_not_keep_the_wave_open(self):
+        self.add_ticket('02')
+        self.cli('install', '--feature', 'demo', '--paused'); self.set_state(concurrency=1); self.cli('cycle')
+        self.add_ticket('02', status='needs-triage')
+        self.build(); self.approve()
+        self.assertNotIn('02', self.ledger())
+        self.assertEqual(self.state()['mode'], 'paused')
+
+    def test_pause_now_saves_the_ledger_when_orca_fails_to_confirm_a_stop(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        (self.orca_dir / 'show-fails').touch()
+        out = self.cli('pause', '--now').stdout
+        self.assertIn('worker term_1 did not stop; close it in Orca', out)
+        self.assertEqual((self.ledger()['01']['state'], self.state()['mode']), ('interrupted', 'paused'))
+
+    def test_precheck_runs_only_when_unpaused_with_work_to_do(self):
+        self.add_ticket('02')
+        self.cli('install', '--feature', 'demo', '--paused')
+        self.cli('precheck', ok=False)  # paused, even with ready tickets
+        self.cli('cycle')
+        self.cli('precheck')  # once-wave still has ready or working tickets
+        self.cli('pause')
+        self.assertEqual(self.state()['mode'], 'draining')
+        self.cli('precheck')  # working tickets to check
+        self.cli('pause', '--now')
+        self.cli('precheck', ok=False)
+        self.add_ticket('03')
+        self.set_state(mode='draining')
+        self.cli('precheck', ok=False)  # draining starts nothing, so a ready ticket is no work
+        self.set_state(mode='running')
+        self.cli('precheck')
+
+    def test_once_wave_respects_concurrency_and_pauses_when_both_merge(self):
+        self.add_ticket('02')
+        self.cli('install', '--feature', 'demo', '--paused'); self.set_state(concurrency=1)
+        self.cli('cycle')
+        self.assertEqual(sorted(self.ledger()), ['01'])
+        self.cli('tick')
+        self.assertEqual(sorted(self.ledger()), ['01'])  # concurrency 1: 02 waits for room
+        self.finish('01')  # report's tick merges 01 and starts 02
+        self.assertEqual((self.ledger()['02']['state'], self.state()['mode']), ('working', 'once'))
+        self.finish('02')
+        self.assertEqual(self.ledger()['02']['state'], 'merged')
+        self.assertEqual(self.state()['mode'], 'paused')
+
+    def test_precheck_skips_when_the_daily_cap_is_reached(self):
+        self.add_ticket('02')
+        self.cli('install', '--feature', 'demo'); self.set_state(daily_ticket_cap=1); self.cli('tick')
+        self.finish('01')
+        self.assertNotIn('02', self.ledger())
+        self.cli('precheck', ok=False)  # 02 is ready but nothing may start today
+
+    def test_precheck_runs_for_an_approved_ticket_waiting_to_merge(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        self.build(); self.git('checkout', '-q', 'main')
+        self.approve(ok=False)  # refused on main, so the ticket stays approved
+        self.assertEqual(self.ledger()['01']['state'], 'approved')
+        self.cli('precheck')
+        self.git('checkout', '-q', 'build/demo'); self.cli('tick')
+        self.assertEqual(self.ledger()['01']['state'], 'merged')
+        self.cli('precheck', ok=False)  # running, nothing ready, working or approved
 
     # --- ticket 06 ---
     def slow_gate(self, seconds):
