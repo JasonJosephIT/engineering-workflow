@@ -27,6 +27,9 @@ Both designs are merged to main. Factory spec and 10 tickets: `.scratch/factory-
 
 ## Decisions
 
+- 2026-10-29: `factory set` is back in the factory spec and ticket 08 (overrides the
+  ponytail cut below): it changes concurrency, build slots, caps and the pile limit,
+  rejecting unknown settings and invalid values. The other three cuts stand.
 - 2026-10-29: Ponytail (full) governs all factory-mode and skill-routing work until
   v0.4.0 is pushed: reuse what exists, stdlib first, shortest working diff, cut
   speculative commands.

@@ -11,5 +11,5 @@
 - [ ] When needs-you plus capped tickets reach `stop_if_waiting` (default 5), `tick` starts nothing and status shows `held`; it starts again once the pile drops below the limit
 - [ ] `factory report` accepts `--slowed-by "<line>"` and stores it
 - [ ] `factory status` summarises the last wave from the ledger: merges, needs-you items, caps, total queue wait and the slowed-by lines
-- [ ] Settings edited by hand in the factory state file (concurrency, build slots, caps, pile limit) take effect on the next tick; an invalid value makes `tick` and `status` fail with a clear error and change nothing
+- [ ] `factory set <setting> <value>` changes concurrency, build slots, caps and the pile limit, rejecting unknown settings and invalid values without writing; the next tick uses the new value
 - [ ] The session-start report includes the factory status line when a factory exists for the project

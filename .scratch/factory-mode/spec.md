@@ -69,7 +69,7 @@ when too much is waiting.
 34. As a developer, I want `factory status` to print one line like `factory: paused · 4 ready · 2 building · 1 needs you · held` plus the details, so that I know the state at a glance.
 35. As a developer, I want that status line in every session-start report for the repo, so that I see where the factory is the moment I open a session.
 36. As a developer, I want `factory status` to summarise the last wave (merges, waiting items, caps, queue wait, slowed-by lines) from the ledger, so that I can review a night's work in a minute.
-37. As a developer, I want concurrency, build slots, caps and the pile limit read from the factory's state file each tick, so that I can tune them by editing one file without reinstalling.
+37. As a developer, I want `factory set <setting> <value>` for concurrency, build slots, caps and the pile limit, so that I can tune without reinstalling or hand-editing state.
 38. As a developer, I want `factory uninstall` to remove the heartbeat but keep the ledger and worktrees, so that removing the factory never destroys work.
 39. As a developer, I want the factory never to merge or push to main, deploy, publish issues or use bypass permissions, so that unattended runs stay inside the limits I already trust.
 40. As a developer, I want all factory state on disk and every agent session fresh, so that nothing depends on chat history or context compaction.
@@ -82,7 +82,7 @@ when too much is waiting.
 
 - New `factory` module, wired into the CLI the same way the reviews module is
   (`add_parser` / `run`), exposing `workflow.py factory <action>` with actions:
-  `install`, `uninstall`, `status`, `pause` (`--now`), `resume`, `cycle`,
+  `install`, `uninstall`, `status`, `set`, `pause` (`--now`), `resume`, `cycle`,
   `tick`, `precheck`, `gate`, `report`, `approve`, `requeue`. Added to the package's
   file list and release lock like the existing modules.
 - An **Orca adapter** inside that module: the only code that calls the `orca` CLI
@@ -109,9 +109,9 @@ install makes sure is git-ignored)
   `worker_handle`, `started_at`, `turns`, `queue_wait_seconds`,
   `gate_seconds`, `slowed_by`, `reason`, `history` (timestamped transitions).
 - `tick.lock` (exclusive `fcntl` lock), `slots/` (one lock file per build slot).
-  Settings are edited by hand in `state.json`; `tick` re-reads them every run and
-  rejects invalid values with a clear error (ponytail: no `set` command until
-  hand-editing proves error-prone). No separate digest file: `status` summarises the
+  `factory set <setting> <value>` changes `concurrency`, `build_slots`,
+  `daily_ticket_cap`, `stop_if_waiting`, `max_turns` or `max_minutes`; it rejects
+  unknown settings and non-positive integers without writing. No separate digest file: `status` summarises the
   last wave from the ledger.
 - Each ticket worktree gets a small marker file in its own ignored state dir naming
   the ticket id and the absolute path of the factory state, so hooks running inside
