@@ -1,6 +1,6 @@
 ---
 status: active
-progress: 30
+progress: 35
 next_date: 2026-10-28
 updated: 2026-10-28
 ---
@@ -14,18 +14,23 @@ approved tickets in parallel after `/to-tickets`, with install / pause (drain or
 / resume / one-cycle controls. Design draft: `docs/factory-mode.md` (+ `.html`).
 Skill routing, add-ons and the `ew-flightdeck` dashboard are designed to ship right
 after it (`docs/skill-routing.md`). `docs/ew-map.svg` shows how both fit the workflow.
-Both designs are merged to main. Factory spec: `.scratch/factory-mode/spec.md`. Nothing built yet.
+Both designs are merged to main. Factory spec and 10 tickets: `.scratch/factory-mode/`. Nothing built yet.
 
 ## Next
 
-1. `/ew-matt-to-tickets` from `.scratch/factory-mode/spec.md`; first ticket is the
-   manual spike (unattended Claude via Orca, hooks firing in Orca-launched agents,
-   cheap-model heartbeat, worker running `factory report`, Orca card/stop/liveness).
-2. Right behind factory mode: `/ew-matt-to-spec` from `docs/skill-routing.md`, then
+1. Ticket 01 (manual, ready-for-human): the Orca spike on this host. Record findings
+   in `.scratch/factory-mode/issues/01-orca-spike.md` under `## Comments`.
+2. Build tickets 02-10 with `ew-subagent-driven-development` (02 first; then 03, 04,
+   05, 06 in parallel; 07 after 05+06; 08 after 04+07; 09 after 05; 10 last).
+3. Right behind factory mode: `/ew-matt-to-spec` from `docs/skill-routing.md`, then
    `/ew-matt-to-tickets`.
 
 ## Decisions
 
+- 2026-10-28: Factory mode split into 10 tickets under `.scratch/factory-mode/issues/`:
+  01 Orca spike (manual), 02 tracer, 03 order/limits, 04 risk/needs-you, 05 modes,
+  06 build queue, 07 caps (high radius: Guard hook path), 08 back-pressure/reporting,
+  09 final review/brief/install offer, 10 release v0.3.0.
 - 2026-10-28: Factory spec written (`.scratch/factory-mode/spec.md`, ready-for-agent).
   Changes from the design draft: state lives in `.engineering-workflow-state/factory/`;
   ticket worktrees come from `git worktree add` on the claimed branch, then
