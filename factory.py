@@ -25,6 +25,7 @@ CARDS = {"working": "in-progress", "needs-you": "in-review", "merged": "complete
 REQUEUABLE = ("needs-you", "capped", "interrupted")
 HEARTBEAT_PROMPT = "Run `workflow.py factory tick` for this project, report its output, do nothing else."
 FRESH_COUNTERS = {"turns": 0, "permission_needed": False}
+SETTINGS = ("concurrency", "build_slots", "daily_ticket_cap", "stop_if_waiting", "max_turns", "max_minutes")
 
 
 def now(): return datetime.now(timezone.utc).isoformat()
@@ -388,8 +389,14 @@ def startable(state, ledger):
     return []
 
 
+def held(state, ledger):
+    """Back-pressure: enough tickets wait on the person (needs-you or capped) that nothing new starts."""
+    return sum(e["state"] in ("needs-you", "capped") for e in ledger.values()) >= state["stop_if_waiting"]
+
+
 def free_room(state, ledger):
-    """How many tickets may start now: concurrency minus working, within the UTC daily cap."""
+    """How many tickets may start now: concurrency minus working, within the UTC daily cap; none when held."""
+    if held(state, ledger): return 0
     today = now()[:10]
     working = sum(e["state"] == "working" for e in ledger.values())
     started = sum(e["started_at"][:10] == today for e in ledger.values())
@@ -397,6 +404,7 @@ def free_room(state, ledger):
 
 
 def start_tickets(state, ledger, out):
+    state["held"] = held(state, ledger)
     mode, room = state["mode"], free_room(state, ledger)
     for ticket in startable(state, ledger):
         if room <= 0 or state["mode"] != mode:  # launch() may pause the factory (bypass)
@@ -563,15 +571,36 @@ def uninstall(args):
     print("Factory uninstalled; the ledger, worktrees and branches are kept")
 
 
+def status_line(state, ledger):
+    """One line for `status` and the session-start report; "needs you" is everything waiting on the person."""
+    count = lambda *names: sum(e["state"] in names for e in ledger.values())
+    return (f"factory: {state['mode']} · {len(ready_tickets(state, ledger))} ready · {count('working')} building"
+            f" · {count(*REQUEUABLE)} needs you" + (" · held" if held(state, ledger) else ""))
+
+
 def status(args):
     directory = state_dir(args.project)
     state, ledger = load(directory)
-    count = lambda name: sum(e["state"] == name for e in ledger.values())
-    print(f"factory: {state['mode']} · {len(ready_tickets(state, ledger))} ready"
-          f" · {count('working')} building · {count('needs-you')} needs you")
+    print(status_line(state, ledger))
     for ticket, entry in sorted(ledger.items()):
         print(" ".join(filter(None, [ticket, entry["state"], entry["branch"], entry["reason"]])))
     if (directory / "final-review.md").is_file(): print(f"final review: {directory / 'final-review.md'}")
+    for line in wave_summary(state, ledger): print(line)
+
+
+def wave_summary(state, ledger):
+    """The last wave (the cycle's tickets, else every ticket): merges, what waits, queue wait, slowed-by lines."""
+    wave = {t: ledger[t] for t in state["wave"] or ledger if t in ledger}
+    if not wave: return []
+    lines = [f"last wave: {sum(e['state'] == 'merged' for e in wave.values())} merged"]
+    for name, label in (("needs-you", "needs you"), ("capped", "capped")):
+        lines += [f"{label}: {t} ({e['reason']})" for t, e in sorted(wave.items()) if e["state"] == name]
+    waited = sum(e["queue_wait_seconds"] for e in wave.values())
+    lines.append(f"queue wait: {round(waited / 60)}m" if waited >= 60 else f"queue wait: {round(waited)}s")
+    slowed = [f"  {t}: {e['slowed_by']}" for t, e in sorted(wave.items()) if e.get("slowed_by")]
+    if slowed: lines += ["slowed by:", *slowed]
+    if state.get("wave_ended_at"): lines.append(f"wave ended: {state['wave_ended_at']}")
+    return lines
 
 
 def gate(args):
@@ -640,6 +669,18 @@ def precheck(args):
     return 0 if state["mode"] != "paused" and work else 1
 
 
+def set_setting(args):
+    name, value = args.ticket, args.result
+    if name not in SETTINGS: raise ValueError(f"set needs one of: {', '.join(SETTINGS)}")
+    if not re.fullmatch(r"[1-9][0-9]*", value or ""): raise ValueError(f"{name} needs a positive integer")
+    directory = state_dir(args.project)
+    with tick_lock(directory):
+        state, _ = load(directory)
+        state[name] = int(value)
+        save(directory / "state.json", state)
+    print(f"{name} = {value}")
+
+
 def set_mode(directory, mode):
     with tick_lock(directory):
         state, ledger = load(directory)
@@ -683,9 +724,10 @@ def cycle(args):
 
 def add_parser(sub):
     f = sub.add_parser("factory", help="Unattended per-ticket builds through Orca")
-    f.add_argument("action", choices=("install", "uninstall", "status", "tick", "gate", "report", "precheck",
+    f.add_argument("action", choices=("install", "uninstall", "status", "set", "tick", "gate", "report", "precheck",
                                       "pause", "resume", "cycle", "approve", "requeue"))
-    f.add_argument("ticket", nargs="?"); f.add_argument("result", nargs="?")
+    f.add_argument("ticket", nargs="?", help="the ticket id, or set's setting")
+    f.add_argument("result", nargs="?", help="report: approved|blocked; set: the value")
     f.add_argument("--project", default="."); f.add_argument("--feature")
     f.add_argument("--integration-branch", help="Default: the branch checked out in the project")
     f.add_argument("--paused", action="store_true"); f.add_argument("--allow-bypass", action="store_true")
@@ -695,8 +737,8 @@ def add_parser(sub):
 
 
 def run(args):
-    actions = {"install": install, "uninstall": uninstall, "status": status, "gate": gate, "report": report,
-               "precheck": precheck,
+    actions = {"install": install, "uninstall": uninstall, "status": status, "set": set_setting, "gate": gate,
+               "report": report, "precheck": precheck,
                "tick": lambda a: tick(state_dir(a.project)),
                "pause": pause, "resume": resume, "cycle": cycle,
                "approve": approve, "requeue": requeue}

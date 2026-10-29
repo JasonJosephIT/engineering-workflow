@@ -1032,6 +1032,89 @@ class FactoryTests(unittest.TestCase):
         self.assertEqual((self.ledger()['01']['state'], self.ledger()['01']['reason']), ('needs-you', 'worktree missing'))
         self.assertEqual(self.ledger()['02']['state'], 'working')
 
+    # --- ticket 08 ---
+    def test_back_pressure_holds_new_starts_until_the_pile_drops(self):
+        self.add_ticket('02'); self.add_ticket('03')
+        self.cli('install', '--feature', 'demo'); self.set_state(concurrency=1, stop_if_waiting=1); self.cli('tick')
+        self.cli('report', '01', 'blocked', '--reason', 'needs a decision', project=self.worktree)
+        self.assertEqual((sorted(self.ledger()), self.state()['held']), (['01'], True))
+        self.assertEqual(self.cli('status').stdout.splitlines()[0],
+                         'factory: running · 2 ready · 0 building · 1 needs you · held')
+        self.cli('precheck', ok=False)  # held: ready tickets are not work
+        self.cli('tick'); self.assertEqual(sorted(self.ledger()), ['01'])
+        self.cli('requeue', '01')
+        self.assertIn('relaunched 01 in its worktree', self.cli('tick').stdout)
+        self.assertFalse(self.state()['held'])
+        self.assertNotIn('held', self.cli('status').stdout.splitlines()[0])
+
+    def test_set_changes_a_setting_for_the_next_tick_and_rejects_bad_input_without_writing(self):
+        self.add_ticket('02'); self.add_ticket('03')
+        self.cli('install', '--feature', 'demo', '--paused')
+        before = (self.state_dir / 'state.json').read_bytes()
+        for bad in (['colour', '3'], ['concurrency', '0'], ['concurrency', '-1'], ['concurrency', 'two'],
+                    ['concurrency', '1.5'], ['max_minutes'], ['mode', '1']):
+            self.assertIn('Error:', self.cli('set', *bad, ok=False).stderr)
+            self.assertEqual((self.state_dir / 'state.json').read_bytes(), before)
+        self.assertEqual(self.cli('set', 'concurrency', '2').stdout, 'concurrency = 2\n')
+        for name in ('build_slots', 'daily_ticket_cap', 'stop_if_waiting', 'max_turns', 'max_minutes'):
+            self.cli('set', name, '7')
+        state = self.state()
+        self.assertEqual([state[k] for k in ('concurrency', 'build_slots', 'daily_ticket_cap', 'stop_if_waiting',
+                                             'max_turns', 'max_minutes')], [2, 7, 7, 7, 7, 7])
+        self.cli('resume')
+        self.assertEqual(sorted(self.ledger()), ['01', '02'])
+
+    def test_status_summarises_the_last_wave_from_the_ledger(self):
+        self.add_ticket('02'); self.add_ticket('03')
+        self.cli('install', '--feature', 'demo'); self.set_state(stop_if_waiting=9); self.cli('tick')
+        self.build()
+        self.cli('report', '01', 'approved', '--slowed-by', 'slow gate', project=self.worktree)
+        two = self.state_dir / 'worktrees' / 'demo-02'
+        self.cli('report', '02', 'blocked', '--reason', 'needs an API decision', '--slowed-by', 'unclear spec',
+                 project=two)
+        self.assertEqual([self.ledger()[t]['slowed_by'] for t in ('01', '02')], ['slow gate', 'unclear spec'])
+        self.set_state(max_turns=1)
+        self.hook('PostToolUse', cwd=self.state_dir / 'worktrees' / 'demo-03', tool_name='Read', tool_input={})
+        self.cli('tick')
+        ledger = self.ledger(); ledger['01']['queue_wait_seconds'] = 100; ledger['02']['queue_wait_seconds'] = 25
+        (self.state_dir / 'ledger.json').write_text(json.dumps(ledger))
+        lines = self.cli('status').stdout.splitlines()
+        self.assertEqual(lines[lines.index('last wave: 1 merged'):], [
+            'last wave: 1 merged', 'needs you: 02 (needs an API decision)', 'capped: 03 (turn cap)',
+            'queue wait: 2m', 'slowed by:', '  01: slow gate', '  02: unclear spec'])
+
+    def test_status_summarises_only_the_cycle_wave_and_its_end(self):
+        self.add_ticket('02')
+        self.cli('install', '--feature', 'demo', '--paused'); self.set_state(concurrency=1)
+        self.cli('cycle'); self.finish('01')  # the wave is 01 and 02; 02 starts once 01 merges
+        self.finish('02')
+        self.add_ticket('03'); self.cli('cycle')  # a new wave of just 03
+        three = self.state_dir / 'worktrees' / 'demo-03'
+        (three / 'x.txt').write_text('x\n'); self.git('add', '-A', cwd=three); self.git('commit', '-qm', 'x', cwd=three)
+        self.cli('report', '03', 'approved', '--slowed-by', 'waited on review', project=three)
+        lines = self.cli('status').stdout.splitlines()
+        summary = lines[lines.index('last wave: 1 merged'):]
+        self.assertEqual(summary[:4], ['last wave: 1 merged', 'queue wait: 0s', 'slowed by:', '  03: waited on review'])
+        self.assertEqual(summary[4], f"wave ended: {self.state()['wave_ended_at']}")
+        self.assertEqual(len(summary), 5)
+
+    def session(self, project):
+        result = subprocess.run([sys.executable, '-B', str(ROOT / 'workflow.py'), 'session', '--project', str(project),
+                                 '--platform', 'claude'], text=True, capture_output=True, env=self.env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
+    def test_session_start_report_carries_the_factory_status_line(self):
+        self.assertNotIn('factory', self.session(self.project))
+        self.add_ticket('02'); self.cli('install', '--feature', 'demo'); self.set_state(concurrency=1); self.cli('tick')
+        line = 'factory: running · 1 ready · 1 building · 0 needs you'
+        self.assertEqual(self.session(self.project)['factory'], line)
+        self.assertEqual(self.session(self.worktree)['factory'], line)  # inside a ticket worktree too
+        started = self.hook('SessionStart', cwd=self.project)
+        self.assertEqual(json.loads(started['hookSpecificOutput']['additionalContext'])['factory'], line)
+        (self.state_dir / 'ledger.json').write_text('not json')
+        self.assertEqual(self.session(self.project)['factory'], 'unreadable')
+
 
 if __name__ == '__main__':
     unittest.main()
