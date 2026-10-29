@@ -928,6 +928,18 @@ class FactoryTests(unittest.TestCase):
         result = self.hook('PostToolUse', tool_name='Write', tool_input={'file_path': str(secret)})
         self.assertIn('potential credential', json.dumps(result))
 
+    def test_requeued_ticket_whose_worktree_is_gone_goes_back_to_needs_you_and_others_still_start(self):
+        self.add_ticket('02'); self.cli('install', '--feature', 'demo'); self.set_state(concurrency=1)
+        self.cli('tick')
+        self.git('worktree', 'remove', '--force', str(self.worktree))
+        self.set_state(mode='draining'); self.cli('tick')  # parks 01 without starting 02
+        self.assertEqual((self.ledger()['01']['state'], self.state()['mode']), ('needs-you', 'paused'))
+        self.cli('requeue', '01'); self.set_state(mode='running')
+        out = self.cli('tick').stdout
+        self.assertIn('01 needs you: worktree missing', out)
+        self.assertEqual((self.ledger()['01']['state'], self.ledger()['01']['reason']), ('needs-you', 'worktree missing'))
+        self.assertEqual(self.ledger()['02']['state'], 'working')
+
 
 if __name__ == '__main__':
     unittest.main()

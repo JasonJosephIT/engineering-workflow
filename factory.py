@@ -359,11 +359,17 @@ def launch(state, entry, ticket, out, started=None):
 
 
 def relaunch(state, entry, ticket, out):
-    """Start a fresh worker for a requeued ticket in its existing branch and worktree."""
+    """Start a fresh worker for a requeued ticket in its existing branch and worktree; False when it is gone."""
+    try:
+        counters(entry["worktree"], reset=True)
+    except OSError:  # nothing to relaunch into
+        move(entry, "needs-you", "worktree missing")
+        out.append(f"{ticket['id']} needs you: worktree missing")
+        return False
     entry.update(started_at=now(), turns=0, queue_wait_seconds=0)  # caps count this run only
-    counters(entry["worktree"], reset=True)
     move(entry, "working")
     launch(state, entry, ticket, out, started=f"relaunched {ticket['id']} in its worktree")
+    return True
 
 
 def startable(state, ledger):
@@ -387,8 +393,7 @@ def start_tickets(state, ledger, out):
         if room <= 0 or state["mode"] != mode:  # launch() may pause the factory (bypass)
             break
         if ticket["id"] in ledger:  # requeued: its branch and worktree already exist
-            room -= 1
-            relaunch(state, ledger[ticket["id"]], ticket, out)
+            if relaunch(state, ledger[ticket["id"]], ticket, out): room -= 1
             continue
         entry = claim(state, ledger, ticket)
         if entry is None:

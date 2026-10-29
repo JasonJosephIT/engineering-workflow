@@ -37,7 +37,7 @@
     "adapters/gemini.md": "151cd43297b5c1ff784e2975fc96ba516d68439171191607dea83941b4349b92",
     "core/REVIEW_CONTRACT.md": "298ba415ea78f5d8e9ce0ee3e4ce26b2f17cddc1e6f07b6d2d5384e22e2cec47",
     "core/WORKFLOW.md": "5779f9099e7f9a76f5a49b6587aa238069b53c9171a9ab10874d32eaad5dea72",
-    "factory.py": "d651b261c133f5d0a752364d419752c80a909bde906d7df49d223fc8c74147b2",
+    "factory.py": "017f44da514e7924eed19303517e3c26a78f89263760d6fd1aeb630bf0fdf34a",
     "reviews.py": "8c14cdfea96555862ca413fc9d2ecd4b84e6b9a00e99b78c68934e32ef31ea95",
     "skills/autopilot/SKILL.md": "48e03cfbaa4d01fa058f7f21db12ccf239ddaad3b1ed1c04b45b4808320da8cb",
     "skills/deploy-checklist/SKILL.md": "ec7a1df34b92b25c0df89e2d0f16b9f87d36c342a6488612d5ebb4156c00a13d",
@@ -158,7 +158,7 @@
     "vendor/mattpocock/skills/productivity/writing-for-agents/SKILL-MECHANICS.md": "c768e6307c7c10728c401c213f2c4ba71c542127eeb7ad2956aabd15a0fa0059",
     "vendor/mattpocock/skills/productivity/writing-for-agents/SKILL.md": "7e3a8a88fc251fae5224405967fc7731313c2767c732cdf77c78a4855a682580",
     "vendor/mattpocock/skills/productivity/writing-for-agents/agents/openai.yaml": "eacb24b2a618cfb81dacb0416f4fdd75ddf3a8060f8ddb99aae1b1e301907e4b",
-    "workflow.py": "866397cdf4aa18453e6001ac54291e045e7e29a2db0f1cce3115500ddad08acf"
+    "workflow.py": "5240262cdaae71c37d5bfe831f48d70a317692e453b7a40d515707da63581d65"
   },
   "name": "engineering-workflow",
   "release": "v0.2.2",

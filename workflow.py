@@ -514,7 +514,7 @@ def factory_worker(project):
     try:
         import factory
         return factory.worker(project)
-    except Exception:  # ponytail: broad on purpose; any failure means "not a factory worker"
+    except Exception:  # broad on purpose: any failure here means plain Guard
         return None
 
 
@@ -573,7 +573,8 @@ def hook(platform, data, event=None):
             decision = guard_command(command, runtime)
             if decision == "ask" and worker:  # nobody watches a factory worker, so a prompt would wait forever
                 import factory
-                factory.flag_permission(project)
+                try: factory.flag_permission(project)
+                except (OSError, ValueError): pass  # still deny; tick's caps catch a bad counters file
                 decision = "deny"
         if decision in ("deny", "ask"):
             if platform in ("gemini", "agy"): return {"decision": "deny", "reason": reason}
