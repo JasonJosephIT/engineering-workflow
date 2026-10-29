@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
+import shlex
 import signal
 import subprocess
 import sys
@@ -917,6 +918,49 @@ class FactoryTests(unittest.TestCase):
         self.assertEqual(self.hook('PreToolUse', **read), {})
         self.cli('tick')
         self.assertEqual(self.ledger()['01']['state'], 'working')
+
+    def test_at_the_turn_cap_only_the_workers_own_blocked_report_gets_through(self):
+        self.add_ticket('02'); self.cli('install', '--feature', 'demo'); self.set_state(max_turns=1); self.cli('tick')
+        self.hook('PostToolUse', tool_name='Read', tool_input={'file_path': 'README.md'})
+        capped = self.denied('Factory turn cap reached; run factory report 01 blocked')
+        workflow = str(ROOT / 'workflow.py')
+        def report(*args, python=sys.executable, script=workflow):  # the form factory.workflow_command emits
+            return shlex.join([python, script, 'factory', 'report', *args])
+        own = report('01', 'blocked')
+        allowed = [own, report('01', 'blocked', '--reason', 'needs an API decision', '--slowed-by', "spec's gap"),
+                   report('01', 'blocked', '--detach', '--project', str(self.worktree), '--reason', 'stuck')]
+        for command in allowed:
+            with self.subTest(allowed=command): self.assertEqual(self.bash(command), {})
+        self.assertEqual(self.hook('PreToolUse', tool_name='exec_command',
+                                   tool_input={'cmd': own, 'workdir': str(self.worktree)}), {})
+        link = self.base / 'python3'; link.symlink_to(sys.executable)
+        denied = [report('02', 'blocked'), report('01', 'approved'), own + '; rm -rf x', own + ' && rm -rf x',
+                  own + ' --reason $(id)', own + ' --reason `id`', own + '\nrm -rf x', own + ' extra',
+                  own + ' --allow-bypass', own + ' --reason a --reason b', own + ' --reason', own + ' --reason=x',
+                  own + ' | tee x', own + ' > x', own + ' "unclosed', own + ' --reason "needs a decision"',
+                  own + ' --reason *', own + ' --reason {a,b}', own + ' --reason ~', own + ' #x',
+                  own.replace(' 01 ', '\t01 '), own.replace(' 01 ', '\x0b01 '), own + ' ',
+                  report('01', 'blocked', python='python3'), report('01', 'blocked', python=str(link)),
+                  report('01', 'blocked', script=str(self.worktree / 'workflow.py')),
+                  report('01', 'blocked', script='workflow.py'), report('01', 'blocked', script=str(ROOT / 'other.py')),
+                  f'sh {shlex.quote(workflow)} factory report 01 blocked',
+                  report('01', 'blocked', '--project', str(self.project)),
+                  report('01', 'blocked', '--project', str(self.state_dir / 'worktrees' / 'demo-02')),
+                  report('01', 'blocked', '--project', '.')]
+        for command in denied:
+            with self.subTest(denied=command): self.assertEqual(self.bash(command), capped)
+        for tool, given in (('Read', {'file_path': 'README.md'}), ('Write', {'command': own}),
+                            ('Bash', {'command': own, 'cmd': own}),
+                            ('exec_command', {'cmd': own, 'workdir': str(self.project)}),
+                            ('exec_command', {'cmd': own, 'cwd': 'elsewhere'})):
+            with self.subTest(tool=tool, given=given):
+                self.assertEqual(self.hook('PreToolUse', tool_name=tool, tool_input=given), capped)
+        brief = report('01', 'blocked', '--project', str(self.worktree), '--reason', 'stuck on it', '--slowed-by', 'spec')
+        self.assertEqual(self.bash(brief), {})
+        run = subprocess.run(shlex.split(brief), cwd=self.worktree, text=True, capture_output=True, env=self.env)
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        entry = self.ledger()['01']
+        self.assertEqual((entry['state'], entry['reason'], entry['slowed_by']), ('needs-you', 'stuck on it', 'spec'))
 
     def test_hooks_outside_a_ticket_worktree_neither_count_nor_cap(self):
         self.cli('install', '--feature', 'demo'); self.set_state(max_turns=1); self.cli('tick')

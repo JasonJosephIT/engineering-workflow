@@ -520,6 +520,35 @@ def factory_worker(project):
     except Exception: return None  # broad on purpose: the caller refuses the tool call
 
 
+SHELL_TOOLS = ("Bash", "exec_command", "shell_command", "run_shell_command", "run_command")
+
+
+def own_blocked_report(inp, ticket, project):
+    """True only for the exact `factory.workflow_command("report", ticket, "blocked", ...)` string, with
+    --reason X, --slowed-by X, --project <this worktree>, --detach, each at most once: what a capped worker may run."""
+    commands = [inp[k] for k in ("command", "cmd", "CommandLine") if k in inp]
+    if len(commands) != 1 or not isinstance(commands[0], str): return False
+    command, home = commands[0], os.path.normpath(str(project))
+    if any(not isinstance(inp[k], str) or os.path.normpath(inp[k]) != home for k in ("workdir", "cwd") if k in inp):
+        return False
+    if any(c in command for c in ";&|`$<>()\n\r\\"): return False
+    try: words = shlex.split(command)
+    except ValueError: return False
+    # Exact strings, canonical quoting: no planted interpreter or workflow.py, no glob/brace/tilde/whitespace tricks.
+    if shlex.join(words) != command: return False
+    if words[:6] != [sys.executable, str(ROOT / "workflow.py"), "factory", "report", ticket, "blocked"]: return False
+    seen, rest = set(), words[6:]
+    while rest:
+        flag = rest.pop(0)
+        if flag in seen or flag not in ("--reason", "--slowed-by", "--project", "--detach"): return False
+        seen.add(flag)
+        if flag != "--detach":
+            if not rest: return False
+            value = rest.pop(0)
+            if flag == "--project" and os.path.normpath(value) != home: return False  # another ledger, another tick
+    return True
+
+
 def default_hook_output(platform, event):
     if platform == "agy":
         if event == "PreToolUse": return {"decision": "ask"}
@@ -573,9 +602,10 @@ def hook(platform, data, event=None):
         decision, reason = None, "Claude Guard requires local review of this command; command text withheld."
         if ticket_tree and not worker:
             decision, reason = "deny", "Factory state unreadable; tool call refused"
-        elif worker and worker[1] >= worker[2]:
+        elif worker and worker[1] >= worker[2] and not (
+                tool in SHELL_TOOLS and own_blocked_report(inp, worker[0], project)):
             decision, reason = "deny", f"Factory turn cap reached; run factory report {worker[0]} blocked"
-        elif tool in ("Bash", "exec_command", "shell_command", "run_shell_command", "run_command") and isinstance(command, str):
+        elif tool in SHELL_TOOLS and isinstance(command, str):  # the capped report still goes through Guard
             decision = guard_command(command, runtime)
             if decision == "ask" and worker:  # nobody watches a factory worker, so a prompt would wait forever
                 try: factory.flag_permission(project)
