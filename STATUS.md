@@ -9,8 +9,8 @@ updated: 2026-10-29
 
 ## Now
 
-Factory mode (v0.3.0) build has started on `build/factory-mode`: ticket 01 (Orca spike)
-is done and recorded; tickets 02-10 are next. The build log is at
+Factory mode (v0.3.0) build is running on `build/factory-mode` with
+`ew-subagent-driven-development`: ticket 01 (Orca spike) done; ticket 02 (tracer) in progress. The build log is at
 `.engineering-workflow-state/sdd/factory-mode/progress.md`. Skill routing (v0.4.0) has
 a spec (`.scratch/skill-routing/spec.md`) but no tickets yet.
 
@@ -24,6 +24,13 @@ a spec (`.scratch/skill-routing/spec.md`) but no tickets yet.
 
 ## Decisions
 
+- 2026-10-29: Factory build details fixed for ticket 02 onward: gate script is
+  `.engineering-workflow/gates.sh` (from the design doc); factory state and ticket
+  worktrees live under `.engineering-workflow-state/factory/` (worktrees in
+  `worktrees/<feature>-<NN>`); install ignores the state dir through
+  `.git/info/exclude`, not `.gitignore`, so the integration checkout stays clean for
+  merges; `state.json` also records `integration_checkout`. Workers launch without
+  `--model`; only the heartbeat uses `--model sonnet`.
 - 2026-10-29: Orca spike done (ticket 01): Orca launches Claude with
   `--dangerously-skip-permissions` by default and the factory can't change that.
   Bypass becomes an opt-in: `factory install --allow-bypass`. Without it, `tick`
