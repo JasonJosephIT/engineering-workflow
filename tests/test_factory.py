@@ -24,8 +24,11 @@ args = sys.argv[1:]
 with open(control / 'log.jsonl', 'a') as log: log.write(json.dumps(args) + '\\n')
 words = ' '.join(a for a in args if not a.startswith('-'))
 def reply(ok=True, **result): print(json.dumps({{'ok': ok, 'result': result}}))
-if words.startswith('repo show'): reply(ok=not (control / 'unregistered').exists())
+if (control / 'non-dict').exists(): print('[]')
+elif words.startswith('repo show'): reply(ok=not (control / 'unregistered').exists())
 elif words.startswith('automations create'): reply(automation={{'id': 'auto_1'}})
+elif words.startswith('agent launch') and (control / 'launch-fails').exists():
+    print(json.dumps({{'ok': False, 'error': {{'code': 'runtime_error', 'message': 'no workspace for path'}}}}))
 elif words.startswith('agent launch'): reply(launch={{'outcome': {{'handle': 'term_1'}}}})
 elif words.startswith('terminal read'):
     bypass = (control / 'bypass').exists()
@@ -183,6 +186,78 @@ class FactoryTests(unittest.TestCase):
         self.assertIn('refusing to merge', refused.stderr)
         self.assertEqual(self.git('rev-parse', 'main'), main_before)
         self.assertEqual(self.ledger()['01']['state'], 'approved')
+
+    def build(self, name='thing.txt', text='built\n', commit=True):
+        (self.worktree / name).write_text(text)
+        if commit:
+            self.git('add', '-A', cwd=self.worktree)
+            self.git('commit', '-qm', f'Build {name}', cwd=self.worktree)
+
+    def approve(self, *extra, ok=True):
+        return self.cli('report', '01', 'approved', '--slowed-by', 'nothing', *extra, project=self.worktree, ok=ok)
+
+    def test_failed_launch_parks_the_ticket_and_the_next_ticket_still_starts(self):
+        second = self.project / '.scratch' / 'demo' / 'issues' / '02-other.md'
+        second.write_text(TICKET.replace('01: Thing', '02: Other'))
+        self.git('add', '-A'); self.git('commit', '-qm', 'second ticket')
+        self.cli('install', '--feature', 'demo')
+        (self.orca_dir / 'launch-fails').touch()
+        self.cli('tick')
+        entry = self.ledger()['01']
+        self.assertEqual(entry['state'], 'needs-you')
+        self.assertTrue(entry['reason'].startswith('worker launch failed: '), entry['reason'])
+        self.assertIn('no workspace for path', entry['reason'])
+        self.assertIsNone(entry['worker_handle'])
+        self.assertTrue(self.worktree.exists())
+        self.git('rev-parse', '--verify', 'refs/heads/factory/demo-01')
+        (self.orca_dir / 'launch-fails').unlink()
+        self.cli('tick')
+        self.assertEqual(self.ledger()['02']['state'], 'working')
+        self.assertEqual(self.ledger()['01']['state'], 'needs-you')
+
+    def test_uncommitted_worker_output_blocks_the_merge(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        self.build('thing.txt'); self.build('loose.txt', commit=False)
+        before = self.git('rev-parse', 'build/demo')
+        self.approve()
+        entry = self.ledger()['01']
+        self.assertEqual((entry['state'], entry['reason']), ('needs-you', 'uncommitted changes in the worktree'))
+        self.assertEqual(self.git('rev-parse', 'build/demo'), before)
+        self.assertEqual((self.worktree / 'loose.txt').read_text(), 'built\n')
+
+    def test_merge_conflict_goes_to_needs_you_and_leaves_integration_clean(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        (self.project / 'README.md').write_text('integration side\n')
+        self.git('commit', '-qam', 'Integration change')
+        before = self.git('rev-parse', 'build/demo')
+        self.build('README.md', 'ticket side\n')
+        self.approve()
+        entry = self.ledger()['01']
+        self.assertEqual((entry['state'], entry['reason']), ('needs-you', 'merge conflict'))
+        self.assertEqual(self.git('rev-parse', 'build/demo'), before)
+        self.assertEqual(self.git('status', '--porcelain'), '')
+        self.assertTrue(self.worktree.exists())
+
+    def test_report_blocked_records_the_reason(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        self.cli('report', '01', 'blocked', '--reason', 'needs an API decision', '--slowed-by', 'unclear spec',
+                 project=self.worktree)
+        entry = self.ledger()['01']
+        self.assertEqual((entry['state'], entry['reason'], entry['slowed_by']),
+                         ('needs-you', 'needs an API decision', 'unclear spec'))
+        self.assertTrue(self.worktree.exists())
+
+    def test_later_field_lines_in_the_ticket_body_do_not_override_status(self):
+        ticket = self.project / '.scratch' / 'demo' / 'issues' / '01-thing.md'
+        ticket.write_text(TICKET + '\nNotes from the last attempt.\n\nStatus: shipped once, then reverted\n')
+        self.git('commit', '-qam', 'ticket notes')
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        self.assertEqual(self.ledger()['01']['state'], 'working')
+
+    def test_non_json_object_reply_from_orca_is_not_ok(self):
+        (self.orca_dir / 'non-dict').touch()
+        refused = self.cli('install', '--feature', 'demo', ok=False).stderr
+        self.assertEqual(refused.strip(), 'Error: This repo is not registered in Orca')
 
     def test_worker_launched_in_bypass_is_stopped_and_factory_pauses(self):
         (self.orca_dir / 'bypass').touch()

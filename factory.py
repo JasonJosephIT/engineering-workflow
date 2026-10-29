@@ -39,9 +39,16 @@ def orca_executable():
 
 def orca(*args, check=True):
     result = subprocess.run([orca_executable(), *args, "--json"], text=True, capture_output=True, timeout=60)
-    try: data = json.loads(result.stdout)
-    except json.JSONDecodeError: data = {"ok": False}
-    if check and not data.get("ok"): raise ValueError(f"orca {' '.join(args[:2])} failed")
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        data = None
+    if not isinstance(data, dict):
+        data = {"ok": False, "error": "unreadable reply"}
+    if check and not data.get("ok"):
+        error = data.get("error")
+        detail = error.get("message") or error.get("code") if isinstance(error, dict) else error
+        raise ValueError(f"orca {' '.join(args[:2])} failed: {detail or result.stderr.strip() or 'no detail'}")
     return data.get("result") or {}
 
 
@@ -100,7 +107,9 @@ def load(directory):
 def tickets(checkout, feature):
     found = []
     for path in sorted((Path(checkout) / ".scratch" / feature / "issues").glob("[0-9][0-9]-*.md")):
-        fields = dict(re.findall(r"^\**([A-Z][A-Za-z ]*?):\**\s*(.+?)\s*$", path.read_text(), re.M))
+        fields = {}
+        for key, value in re.findall(r"^\**([A-Z][A-Za-z ]*?):\**[ \t]*(\S.*?)[ \t]*$", path.read_text(), re.M):
+            fields.setdefault(key, value)  # the header's line wins over later body lines
         found.append({"id": path.name[:2], "path": path, "status": fields.get("Status", "")})
     return found
 
@@ -148,23 +157,38 @@ def starter_gate(checkout):
 
 # --- Tick steps -------------------------------------------------------------------
 
-def merge_approved(state, ledger, out):
+def gate_ticket(entry):
+    """Return a needs-you reason, or None when the ticket branch is clean and passes its gate."""
+    if git("status", "--porcelain", cwd=entry["worktree"]) != "":
+        return "uncommitted changes in the worktree"
+    passed, _ = run_gate(entry["worktree"])
+    return None if passed else "gates failed on the ticket branch"
+
+
+def merge_ticket(state, entry):
+    """Merge into the integration branch; return a needs-you reason, or None when merged."""
     checkout, target = state["integration_checkout"], state["integration_branch"]
+    current = git("branch", "--show-current", cwd=checkout)
+    if current != target or current in PROTECTED:
+        raise ValueError(f"Integration checkout is on {current!r}, not {target!r}; refusing to merge")
+    if git("merge", "--no-ff", "--no-edit", entry["branch"], cwd=checkout) is None:
+        git("merge", "--abort", cwd=checkout)
+        return "merge conflict"
+    git("worktree", "remove", "--force", entry["worktree"], cwd=checkout)
+    return None
+
+
+def merge_approved(state, ledger, out):
     for ticket, entry in ledger.items():
-        if entry["state"] != "approved": continue
-        passed, _ = run_gate(entry["worktree"])
-        if not passed:
-            move(entry, "needs-you", "gates failed on the ticket branch"); out.append(f"{ticket} needs you: gates failed")
+        if entry["state"] != "approved":
             continue
-        current = git("branch", "--show-current", cwd=checkout)
-        if current != target or current in PROTECTED:
-            raise ValueError(f"Integration checkout is on {current!r}, not {target!r}; refusing to merge")
-        if git("merge", "--no-ff", "--no-edit", entry["branch"], cwd=checkout) is None:
-            git("merge", "--abort", cwd=checkout)
-            move(entry, "needs-you", "merge conflict"); out.append(f"{ticket} needs you: merge conflict")
-            continue
-        git("worktree", "remove", "--force", entry["worktree"], cwd=checkout)
-        move(entry, "merged"); out.append(f"merged {ticket} into {target}")
+        reason = gate_ticket(entry) or merge_ticket(state, entry)
+        if reason:
+            move(entry, "needs-you", reason)
+            out.append(f"{ticket} needs you: {reason}")
+        else:
+            move(entry, "merged")
+            out.append(f"merged {ticket} into {state['integration_branch']}")
 
 
 def worker_brief(state, ticket, worktree):
@@ -175,38 +199,65 @@ def worker_brief(state, ticket, worktree):
             f' --slowed-by "<one line>" (or report blocked --reason "<one line>").')
 
 
-def start_tickets(state, ledger, out):
-    if state["mode"] != "running": return
+def claim(state, ledger, ticket):
+    """Branch from the integration tip, add the worktree and marker, and persist a working entry."""
     checkout, directory = state["integration_checkout"], Path(state["state_dir"])
+    branch = f"factory/{state['feature']}-{ticket['id']}"
+    if git("branch", branch, state["integration_branch"], cwd=checkout) is None:
+        return None  # already claimed
+    worktree = directory / "worktrees" / f"{state['feature']}-{ticket['id']}"
+    if git("worktree", "add", str(worktree), branch, cwd=checkout) is None:
+        raise ValueError(f"Could not create worktree for {branch}")
+    save(ticket_marker(worktree), {"ticket": ticket["id"], "state_dir": str(directory)})
+    entry = ledger[ticket["id"]] = {
+        "state": "working", "branch": branch, "worktree": str(worktree), "worker_handle": None,
+        "started_at": now(), "turns": 0, "queue_wait_seconds": 0, "gate_seconds": 0,
+        "slowed_by": None, "reason": None, "history": [{"at": now(), "state": "working"}]}
+    save(directory / "ledger.json", ledger)  # a crash during launch must not lose the claim
+    return entry
+
+
+def launch(state, entry, ticket, out):
+    """Launch the worker; park the ticket on launch failure or an unallowed bypass launch."""
+    try:
+        entry["worker_handle"] = launch_worker(entry["worktree"], worker_brief(state, ticket, entry["worktree"]))
+    except ValueError as error:
+        move(entry, "needs-you", f"worker launch failed: {error}")
+        out.append(f"{ticket['id']} needs you: worker launch failed")
+        return
+    out.append(f"claimed {ticket['id']} on {entry['branch']}")
+    if state["allow_bypass"] or not worker_in_bypass(entry["worker_handle"]):
+        return
+    stopped = stop_worker(entry["worker_handle"])
+    move(entry, "needs-you", BYPASS_REASON)
+    state["mode"] = "paused"
+    out.append(f"{ticket['id']} needs you: {BYPASS_REASON}; factory paused")
+    if not stopped:
+        out.append(f"worker {entry['worker_handle']} did not stop; close it in Orca")
+
+
+def start_tickets(state, ledger, out):
+    if state["mode"] != "running":
+        return
     for ticket in ready_tickets(state, ledger)[:1]:  # ponytail: one per tick; ticket 03 adds concurrency
-        branch = f"factory/{state['feature']}-{ticket['id']}"
-        if git("branch", branch, state["integration_branch"], cwd=checkout) is None:
-            out.append(f"{ticket['id']} already claimed"); continue
-        worktree = directory / "worktrees" / f"{state['feature']}-{ticket['id']}"
-        if git("worktree", "add", str(worktree), branch, cwd=checkout) is None:
-            raise ValueError(f"Could not create worktree for {branch}")
-        save(ticket_marker(worktree), {"ticket": ticket["id"], "state_dir": str(directory)})
-        entry = ledger[ticket["id"]] = {
-            "state": "working", "branch": branch, "worktree": str(worktree), "worker_handle": None,
-            "started_at": now(), "turns": 0, "queue_wait_seconds": 0, "gate_seconds": 0,
-            "slowed_by": None, "reason": None, "history": [{"at": now(), "state": "working"}]}
-        entry["worker_handle"] = launch_worker(worktree, worker_brief(state, ticket, worktree))
-        out.append(f"claimed {ticket['id']} on {branch}")
-        if not state["allow_bypass"] and worker_in_bypass(entry["worker_handle"]):
-            stopped = stop_worker(entry["worker_handle"])
-            move(entry, "needs-you", BYPASS_REASON); state["mode"] = "paused"
-            out.append(f"{ticket['id']} needs you: {BYPASS_REASON}; factory paused")
-            if not stopped: out.append(f"worker {entry['worker_handle']} did not stop; close it in Orca")
+        entry = claim(state, ledger, ticket)
+        if entry is None:
+            out.append(f"{ticket['id']} already claimed")
+        else:
+            launch(state, entry, ticket, out)
 
 
 def tick(directory):
     with tick_lock(directory):
         state, ledger = load(directory)
         out = []
-        merge_approved(state, ledger, out)
-        start_tickets(state, ledger, out)
-        state["last_tick"] = now()
-        save(directory / "ledger.json", ledger); save(directory / "state.json", state)
+        try:
+            merge_approved(state, ledger, out)
+            start_tickets(state, ledger, out)
+            state["last_tick"] = now()
+        finally:  # keep merges and claims made before any failure
+            save(directory / "ledger.json", ledger)
+            save(directory / "state.json", state)
     print("\n".join(out) or "nothing to do")
 
 
