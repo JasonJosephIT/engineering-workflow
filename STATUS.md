@@ -2,7 +2,7 @@
 status: active
 progress: 35
 next_date: 2026-10-28
-updated: 2026-10-28
+updated: 2026-10-29
 ---
 
 # STATUS
@@ -24,9 +24,15 @@ Both designs are merged to main. Factory spec and 10 tickets: `.scratch/factory-
    05, 06 in parallel; 07 after 05+06; 08 after 04+07; 09 after 05; 10 last).
 3. Skill routing: spec written (`.scratch/skill-routing/spec.md`); next
    `/ew-matt-to-tickets` for it.
+4. npm: create a GitHub token with `write:packages`, then bump to 0.2.3, tag it, and `npm publish` from that tag (v0.2.2 predates package.json and has a different lock).
 
 ## Decisions
 
+- 2026-10-29: Publish "Ares Workflow" privately on GitHub Packages as
+  `@jasonjosephit/ares-workflow` (repos are private; public npm would expose the code).
+  `package.json` + `bin/ares-workflow.js` (node wrapper running `python3 workflow.py`)
+  are in; tarball install, verify and user install tested locally. Not yet published.
+  `engineering-workflow` on public npm belongs to an unrelated package.
 - 2026-10-29: `factory set` is back in the factory spec and ticket 08 (overrides the
   ponytail cut below): it changes concurrency, build slots, caps and the pile limit,
   rejecting unknown settings and invalid values. The other three cuts stand.
