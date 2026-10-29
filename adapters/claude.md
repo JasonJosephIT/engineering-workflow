@@ -15,6 +15,10 @@ Do not additionally enable the original Guard/Headroom/autopilot/docs-health/i-h
 for the same functions. The portable docs-health and autopilot skills replace the
 Claude TSX modules; their special status panes/buttons are not reproduced.
 
+Factory workers and the final reviewer are Claude agents launched by Orca. Inside
+ticket worktrees a Guard ask becomes deny and parks the ticket as needs-you
+("permission needed").
+
 At implementation checkpoints, use ew-implementation-review to show the short
 human review in chat and queue it with the producer CLI using `--platform claude`.
 Keep the existing capture path once; private narratives/feedback sync only to the

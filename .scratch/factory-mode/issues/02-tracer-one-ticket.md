@@ -13,6 +13,7 @@
 - [ ] `factory tick` claims the first ready ticket by creating its `factory/<feature>-<NN>` branch from the integration tip, creates its worktree with `git worktree add`, writes the marker file, and launches `claude` there through the adapter
 - [ ] `factory gate` runs the project's gate script and exits 0 only when its last line is exactly `GATES: PASS`; a missing script fails
 - [ ] `factory report <ticket> approved` records the result and runs `tick`, which re-runs the gate on the ticket branch and merges it (no fast-forward) into the integration branch, removes the worktree and keeps the branch
+- [ ] `--allow-bypass` is recorded in factory state; without it, a worker that Orca started with `--dangerously-skip-permissions` (seen in the first lines of its terminal) is stopped, its ticket goes to needs-you with that reason, and the factory pauses
 - [ ] The factory never touches main
 - [ ] Tests drive the CLI as a subprocess against a temp git repo with a fake `orca` on PATH that logs calls, following the existing reviews tests
 - [ ] The new module is in the package file list and lock; the full test suite and `verify` pass

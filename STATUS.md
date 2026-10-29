@@ -1,32 +1,82 @@
 ---
 status: active
-progress: 35
-next_date: 2026-10-28
-updated: 2026-10-28
+progress: 95
+next_date: 2026-10-29
+updated: 2026-10-29
 ---
 
 # STATUS
 
 ## Now
 
-Designing factory mode (v0.3.0): an opt-in, Orca-hosted loop that keeps building
-approved tickets in parallel after `/to-tickets`, with install / pause (drain or stop)
-/ resume / one-cycle controls. Design draft: `docs/factory-mode.md` (+ `.html`).
-Skill routing, add-ons and the `ew-flightdeck` dashboard are designed to ship right
-after it (`docs/skill-routing.md`). `docs/ew-map.svg` shows how both fit the workflow.
-Both designs are merged to main. Factory spec and 10 tickets: `.scratch/factory-mode/`. Nothing built yet.
+Factory mode v0.3.0 is built on `build/factory-mode` (tickets 01-10 merged, final
+review done and its findings fixed): 127 tests and `verify --expected 0.3.0` pass;
+main is untouched (12c0318). Pushed; open as PR #6 against main, not merged. Build log:
+`.engineering-workflow-state/sdd/factory-mode/progress.md`.
 
 ## Next
 
-1. Ticket 01 (manual, ready-for-human): the Orca spike on this host. Record findings
-   in `.scratch/factory-mode/issues/01-orca-spike.md` under `## Comments`.
-2. Build tickets 02-10 with `ew-subagent-driven-development` (02 first; then 03, 04,
-   05, 06 in parallel; 07 after 05+06; 08 after 04+07; 09 after 05; 10 last).
-3. Skill routing: spec written (`.scratch/skill-routing/spec.md`); next
+1. Review and merge PR JasonJosephIT/engineering-workflow#6 (`build/factory-mode` → main),
+   then tag/release v0.3.0.
+3. Remove the `orca-spike` repo entry in Orca's UI (left by the spike; no CLI for it).
+4. First real factory run on a small feature to confirm the unverified Orca facts.
+5. Skill routing: spec written (`.scratch/skill-routing/spec.md`); next
    `/ew-matt-to-tickets` for it.
 
 ## Decisions
 
+- 2026-10-29: At the turn cap the hook lets exactly one command through: the worker's
+  own `workflow.py factory report <NN> blocked` (no shell operators), so a capped ticket
+  lands in needs-you with the worker's reason; every other tool call stays refused.
+  `build/factory-mode` lands by push + PR against main (your choice); nothing merges
+  to main until you approve the PR.
+- 2026-10-29: Final-review fixes for factory mode: tick and approve gate with the
+  integration branch's `gates.sh`, never the ticket's; a ticket that changes workflow
+  control files (`.engineering-workflow/`, `.claude/`, `CLAUDE.md`, `AGENTS.md`, the
+  feature's tickets, ...) is held for approval; hooks inside factory worktrees never
+  yield to a project pin found there and fail closed instead of hanging; person-only
+  commands are refused from ticket worktrees; uninstall stops workers and archives the
+  ledger; `precheck` wakes tick whenever a ticket is working, even when paused, so caps
+  keep running; `report`/heartbeat ticks run detached so a Bash timeout can't kill a
+  merge. README states that Guard is not a sandbox in bypass mode.
+- 2026-10-29: The factory's final review runs only when the whole feature is done:
+  nothing ready, working or approved, and nothing waiting on you (needs-you, capped,
+  interrupted). Until then a running factory idles at no cost; `precheck` wakes it
+  when the review becomes due (e.g. after the last `factory approve`). This tightens
+  the spec's "nothing ready, working or approved" so a held high-radius ticket is
+  never reviewed before it merges.
+- 2026-10-29: Factory turn counts and the "permission needed" flag live in a small file
+  in each ticket worktree (`.engineering-workflow-state/factory-turns.json`), not in
+  `ledger.json`, so hooks never wait on the tick lock while a pre-merge gate runs;
+  `tick` copies the count into the ledger. A relaunched (requeued) ticket starts with
+  its turn count reset.
+- 2026-10-29: The factory's final review writes its findings to
+  `.engineering-workflow-state/factory/final-review.md` (agents writing ledger JSON is
+  fragile); `factory status` points at that file and the integration card gets a
+  `NEEDS YOU: final review ready` comment. `factory uninstall` removes the heartbeat and
+  `state.json` only, keeping the ledger, worktrees and branches.
+- 2026-10-29: `factory approve` merges only a held ticket, one whose worker reported
+  approved (held for high blast radius, failed gate re-run, merge conflict or
+  uncommitted changes). Blocked, permission-needed, bypass-stopped and launch-failed
+  tickets are refused with "requeue it instead".
+- 2026-10-29: Ticket 07 (caps) now waits for 04 as well as 05+06: one generic
+  `factory requeue` (needs-you, capped or interrupted → ready, keeping branch and
+  worktree) lives in ticket 04, so 07 needs it. The "requeue an interrupted ticket"
+  test moves from 05 to 07.
+- 2026-10-29: Factory build details fixed for ticket 02 onward: gate script is
+  `.engineering-workflow/gates.sh` (from the design doc); factory state and ticket
+  worktrees live under `.engineering-workflow-state/factory/` (worktrees in
+  `worktrees/<feature>-<NN>`); install ignores the state dir through
+  `.git/info/exclude`, not `.gitignore`, so the integration checkout stays clean for
+  merges; `state.json` also records `integration_checkout`. Workers launch without
+  `--model`; only the heartbeat uses `--model sonnet`.
+- 2026-10-29: Orca spike done (ticket 01): Orca launches Claude with
+  `--dangerously-skip-permissions` by default and the factory can't change that.
+  Bypass becomes an opt-in: `factory install --allow-bypass`. Without it, `tick`
+  detects a bypass-launched worker, stops it, sends the ticket to needs-you and pauses.
+  In ticket worktrees, Guard `ask` becomes `deny` + needs-you ("permission needed")
+  so no worker waits on a prompt. Heartbeat uses `--model sonnet` (haiku hit an API
+  400). Spec, tickets 02 and 07 updated.
 - 2026-10-29: `factory set` is back in the factory spec and ticket 08 (overrides the
   ponytail cut below): it changes concurrency, build slots, caps and the pile limit,
   rejecting unknown settings and invalid values. The other three cuts stand.
@@ -132,13 +182,15 @@ Both designs are merged to main. Factory spec and 10 tickets: `.scratch/factory-
 
 ## Open items / waiting on
 
-- Unverified: whether Orca automations can run Claude unattended under the current
-  permission mode.
-- Confirm "one cycle = one wave".
-- Unverified: whether Claude agents launched by Orca run the workflow's PostToolUse
-  hook (the turn cap depends on it). Check in the same spike.
-- Unverified: whether the heartbeat accepts `--extra-agent-args="--model haiku"`, and
-  whether a worker can run `factory report` as its last step. Same spike.
+- Unverified on real Orca: `terminal read` output shape (bypass check now fails
+  closed if it can't read), and that `terminal show` reports `connected: false` only
+  for dead workers.
+- Untested paths: git timeouts on worktree add/merge/remove; requeue of a leftover
+  claim whose branch is gone. A claim rejected by another host's push retries each tick.
+- Follow-up: `factory.state_dir` trusts the `state_dir` in a worktree's marker file,
+  which the worker can rewrite; derive it from the worktree's location instead.
+- Guard is not a sandbox in bypass mode: a worker can edit its own counters/marker or
+  any reachable file; the time cap and the control-file merge hold are the backstops.
 
 ## Idea Shelf
 

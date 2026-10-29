@@ -10,6 +10,7 @@
 
 - [ ] Inside a ticket worktree (found through its marker file), the PostToolUse hook increments the ticket's turn count
 - [ ] Once turns reach `max_turns`, the PreToolUse hook refuses every tool call with a message telling the agent to report blocked
+- [ ] Inside a ticket worktree, a Guard `ask` becomes `deny` (no prompt left waiting) and records "permission needed" in the ledger; `tick` stops that worker and moves the ticket to needs-you with that reason; Guard `deny` is unchanged
 - [ ] `tick` stops a worker whose working minutes (wall time minus recorded queue wait) exceed `max_minutes`, or whose turns reached the cap, and marks it capped with its worktree kept
 - [ ] `tick` marks a working ticket interrupted when the adapter reports its worker dead and it never reported
 - [ ] `factory requeue` returns a capped ticket to ready

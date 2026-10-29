@@ -71,7 +71,7 @@ when too much is waiting.
 36. As a developer, I want `factory status` to summarise the last wave (merges, waiting items, caps, queue wait, slowed-by lines) from the ledger, so that I can review a night's work in a minute.
 37. As a developer, I want `factory set <setting> <value>` for concurrency, build slots, caps and the pile limit, so that I can tune without reinstalling or hand-editing state.
 38. As a developer, I want `factory uninstall` to remove the heartbeat but keep the ledger and worktrees, so that removing the factory never destroys work.
-39. As a developer, I want the factory never to merge or push to main, deploy, publish issues or use bypass permissions, so that unattended runs stay inside the limits I already trust.
+39. As a developer, I want the factory never to merge or push to main, deploy or publish issues, and to run workers in bypass permission mode only when I installed it with `--allow-bypass`, so that unattended runs stay inside the limits I chose.
 40. As a developer, I want all factory state on disk and every agent session fresh, so that nothing depends on chat history or context compaction.
 41. As a workflow maintainer, I want the factory implemented with the standard library only and covered by the existing CLI-subprocess test style, so that it matches the rest of the package.
 42. As a workflow maintainer, I want the factory's Orca calls isolated behind one small adapter, so that an Orca CLI change touches one place.
@@ -163,9 +163,10 @@ ticket is ready, working or approved.
 7. Mode bookkeeping and card updates for every ticket whose state changed; the
    wave's end time is recorded so `status` can summarise it.
 
-**`precheck`** exits 0 only when mode is not `paused` and `tick` has something to do
-(ready tickets with free capacity and not held, working tickets to check, or approved
-tickets to merge); otherwise non-zero so Orca skips the run.
+**`precheck`** exits 0 whenever a ticket is working, in any mode (tick reconciles, caps
+and merges, and starts nothing the mode forbids). Otherwise it exits 0 only when mode is
+not `paused` and `tick` has something to do (ready tickets with free capacity and not
+held, or approved tickets to merge); otherwise non-zero so Orca skips the run.
 
 **Heartbeat**: one Orca automation per factory, hourly, provider `claude`, running in
 the integration checkout's Orca workspace, cheap model via extra agent args, precheck
@@ -186,6 +187,12 @@ updates the ledger, then runs `tick`.
 message "Factory turn cap reached; run factory report <ticket> blocked". `tick`
 then marks it `capped` (step 2) and stops the worker.
 
+**Guard asks never stall a worker**: inside a ticket worktree, when Guard's PreToolUse
+decision is `ask`, the hook returns `deny` instead (the prompt would wait forever with
+nobody there) and records `permission needed` in the ticket's ledger entry. `tick`
+stops that worker and moves the ticket to needs-you with the reason "permission
+needed". Guard `deny` stays `deny`. Outside ticket worktrees nothing changes.
+
 **Needs-you surface**: the ticket's Orca card gets status `in-review`, a comment
 starting `NEEDS YOU:` with the reason, and the unread dot. Working tickets show
 `in-progress`, merged tickets `completed`. (This replaces the design draft's
@@ -194,7 +201,13 @@ orchestration decision gates, which need orchestration tasks the factory doesn't
 **Install** preflight refuses on: no `orca` executable; repo not registered in Orca;
 integration branch missing or named main/master; feature has no ticket files; no
 gate script (prints a starter generated from detected project commands for the
-person to save and commit). Install writes state with `--paused` or running, adds the
+person to save and commit). `--allow-bypass` records `allow_bypass: true`: Orca
+launches Claude with `--dangerously-skip-permissions` by default (spike, ticket 01),
+and the factory cannot change Orca's launch arguments. Without the flag, `tick` reads
+the first lines of each new worker's terminal; if Orca started it in bypass mode, it
+stops the worker, puts the ticket in needs-you ("Orca launched in bypass mode; remove
+it from Orca's Claude arguments or reinstall with --allow-bypass") and pauses the
+factory. Guard (PreToolUse) stays the safety net either way. Install writes state with `--paused` or running, adds the
 state dir to the ignore file if needed, and registers the heartbeat. A second install
 for the same project refuses.
 

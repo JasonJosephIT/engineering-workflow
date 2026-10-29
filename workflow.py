@@ -53,14 +53,14 @@ def write_atomic(path, content):
         temp.unlink(missing_ok=True)
 
 
-def git(*args, cwd=None):
+def git(*args, cwd=None, timeout=20):
     result = subprocess.run(["git", *args], cwd=cwd, text=True,
-                            capture_output=True, timeout=20)
+                            capture_output=True, timeout=timeout)
     return result.stdout.strip() if result.returncode == 0 else None
 
 
 def package_paths(root=ROOT):
-    for name in ("workflow.py", "reviews.py", "VERSION", "README.md", "SOURCES.md", "LICENSE"):
+    for name in ("workflow.py", "reviews.py", "factory.py", "VERSION", "README.md", "SOURCES.md", "LICENSE"):
         yield root / name
     for name in ("core", "adapters", "skills", "vendor"):
         for p in sorted((root / name).rglob("*")):
@@ -423,6 +423,12 @@ def session(project, platform, expected=None, check_upstream=False):
         configuration = reviews.read_project(project)
         result["project"] = {"id": configuration["project_id"], "public_facing": configuration["public_facing"],
                              "discovery": reviews.discovery_status(configuration)}
+    import factory
+    try:
+        directory = factory.state_dir(project)
+        if (directory / "state.json").is_file(): result["factory"] = factory.status_line(*factory.load(directory))
+    except Exception:  # broad on purpose: factory state never breaks the session report
+        result["factory"] = "unreadable"
     if check_upstream:
         remote = git("ls-remote", REPOSITORY, "refs/tags/" + lock["release"], cwd=runtime)
         if not remote:
@@ -507,6 +513,42 @@ def hook_cwd(data):
     return "."
 
 
+def factory_worker(project):
+    """(ticket, turns, max_turns) for a hook in a ticket worktree; None when its factory files cannot be read."""
+    import factory
+    try: return factory.worker(project)
+    except Exception: return None  # broad on purpose: the caller refuses the tool call
+
+
+SHELL_TOOLS = ("Bash", "exec_command", "shell_command", "run_shell_command", "run_command")
+
+
+def own_blocked_report(inp, ticket, project):
+    """True only for the exact `factory.workflow_command("report", ticket, "blocked", ...)` string, with
+    --reason X, --slowed-by X, --project <this worktree>, --detach, each at most once: what a capped worker may run."""
+    commands = [inp[k] for k in ("command", "cmd", "CommandLine") if k in inp]
+    if len(commands) != 1 or not isinstance(commands[0], str): return False
+    command, home = commands[0], os.path.normpath(str(project))
+    if any(not isinstance(inp[k], str) or os.path.normpath(inp[k]) != home for k in ("workdir", "cwd") if k in inp):
+        return False
+    if any(c in command for c in ";&|`$<>()\n\r\\"): return False
+    try: words = shlex.split(command)
+    except ValueError: return False
+    # Exact strings, canonical quoting: no planted interpreter or workflow.py, no glob/brace/tilde/whitespace tricks.
+    if shlex.join(words) != command: return False
+    if words[:6] != [sys.executable, str(ROOT / "workflow.py"), "factory", "report", ticket, "blocked"]: return False
+    seen, rest = set(), words[6:]
+    while rest:
+        flag = rest.pop(0)
+        if flag in seen or flag not in ("--reason", "--slowed-by", "--project", "--detach"): return False
+        seen.add(flag)
+        if flag != "--detach":
+            if not rest: return False
+            value = rest.pop(0)
+            if flag == "--project" and os.path.normpath(value) != home: return False  # another ledger, another tick
+    return True
+
+
 def default_hook_output(platform, event):
     if platform == "agy":
         if event == "PreToolUse": return {"decision": "ask"}
@@ -525,9 +567,11 @@ def context_output(platform, event, message):
 
 
 def hook(platform, data, event=None):
+    import factory
     event = event or data.get("hook_event_name", "")
     project = find_project(hook_cwd(data))
-    runtime = runtime_for(project)
+    ticket_tree = factory.in_ticket_worktree(hook_cwd(data))
+    runtime = ROOT if ticket_tree else runtime_for(project)  # a worker can forge a project pin
     # Verify package bytes before invoking vendored runtime code.
     verify(runtime)
     if event == "SessionStart":
@@ -554,18 +598,31 @@ def hook(platform, data, event=None):
         inp = (tc.get("args") if isinstance(tc.get("args"), dict) else None) or data.get("tool_input") or {}
         tool = tc.get("name") or data.get("tool_name", "")
         command = inp.get("command", inp.get("cmd", inp.get("CommandLine", "")))
-        if tool in ("Bash", "exec_command", "shell_command", "run_shell_command", "run_command") and isinstance(command, str):
+        worker = factory_worker(project) if ticket_tree else None
+        decision, reason = None, "Claude Guard requires local review of this command; command text withheld."
+        if ticket_tree and not worker:
+            decision, reason = "deny", "Factory state unreadable; tool call refused"
+        elif worker and worker[1] >= worker[2] and not (
+                tool in SHELL_TOOLS and own_blocked_report(inp, worker[0], project)):
+            decision, reason = "deny", f"Factory turn cap reached; run factory report {worker[0]} blocked"
+        elif tool in SHELL_TOOLS and isinstance(command, str):  # the capped report still goes through Guard
             decision = guard_command(command, runtime)
-            if decision in ("deny", "ask"):
-                reason = "Claude Guard requires local review of this command; command text withheld."
-                if platform in ("gemini", "agy"): return {"decision": "deny", "reason": reason}
-                return {"hookSpecificOutput": {"hookEventName": event,
-                    "permissionDecision": decision, "permissionDecisionReason": reason}}
+            if decision == "ask" and worker:  # nobody watches a factory worker, so a prompt would wait forever
+                try: factory.flag_permission(project)
+                except Exception: pass  # still deny; tick's caps catch a bad counters file
+                decision = "deny"
+        if decision in ("deny", "ask"):
+            if platform in ("gemini", "agy"): return {"decision": "deny", "reason": reason}
+            return {"hookSpecificOutput": {"hookEventName": event,
+                "permissionDecision": decision, "permissionDecisionReason": reason}}
         return default_hook_output(platform, event)
     if event in ("PostToolUse", "AfterTool", "PostInvocation"):
         tc = data.get("toolCall") if isinstance(data.get("toolCall"), dict) else {}
         inp = (tc.get("args") if isinstance(tc.get("args"), dict) else None) or data.get("tool_input") or {}
         message = credential_check(project, inp, runtime)
+        if ticket_tree:
+            try: factory.count_turn(project)
+            except Exception: pass  # skip the count; a bad counters file already caps the worker
         if message: return context_output(platform, event, message)
     if event in ("Stop", "AfterAgent"):
         # Subagents must not drive the controller's standing-goal loop.
@@ -590,10 +647,12 @@ def hook(platform, data, event=None):
 
 
 def main():
+    import factory
     import reviews
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest="command", required=True)
     reviews.add_parser(sub)
+    factory.add_parser(sub)
     sub.add_parser("freeze", help="Maintainer: regenerate release checksums")
     v = sub.add_parser("verify"); v.add_argument("--expected")
     i = sub.add_parser("install")
@@ -618,13 +677,15 @@ def main():
     a = p.parse_args()
     try:
         raw_hook = None
-        if a.command in ("session", "doctor", "docs", "goal", "hook", "project", "review"):
+        if a.command in ("session", "doctor", "docs", "goal", "hook", "project", "review", "factory"):
             if a.command == "hook":
                 raw_hook = sys.stdin.read()
                 data = json.loads(raw_hook) if raw_hook.strip() else {}
-                selected = runtime_for(hook_cwd(data))
+                where = hook_cwd(data)
             else:
-                selected = runtime_for(a.project)
+                where = a.project
+            # Never a project pin inside a factory ticket worktree: the worker can forge one.
+            selected = ROOT if factory.in_ticket_worktree(where) else runtime_for(where)
             if selected.resolve() != ROOT:
                 verify(selected)
                 if a.command == "hook":
@@ -638,6 +699,7 @@ def main():
                                        *sys.argv[1:]], input=raw_hook, text=True).returncode
         if a.command == "freeze": freeze()
         elif a.command in ("project", "review"): print(json.dumps(reviews.run(a), indent=2))
+        elif a.command == "factory": return factory.run(a)
         elif a.command == "verify": print("Verified workflow", verify(expected=a.expected)["version"])
         elif a.command == "install": install(a)
         elif a.command in ("session", "doctor"): print(json.dumps(session(a.project, a.platform, a.expected, a.check_upstream), indent=2))
@@ -645,9 +707,9 @@ def main():
         elif a.command == "goal": goal(a)
         elif a.command == "hook":
             print(json.dumps(hook(a.platform, data, event=a.event)))
-    except (ValueError, OSError, KeyError, subprocess.SubprocessError) as error:
+    except Exception as error:
         # Do not echo raw tool inputs, subprocess output or credentials.
-        if a.command == "hook":
+        if a.command == "hook":  # any failure, expected or not, takes the failure path
             print("Engineering workflow hook failed; verification/enforcement unavailable.", file=sys.stderr)
             ev = getattr(a, "event", "") or (data.get("hook_event_name") if isinstance(locals().get("data"), dict) else "")
             if ev in ("Stop", "AfterAgent"):
@@ -657,6 +719,7 @@ def main():
                     print(json.dumps({"continue": False, "stopReason": "Workflow verification failed; inspect installation before resuming."}))
                 return 0
             return 2
+        if not isinstance(error, (ValueError, OSError, KeyError, subprocess.SubprocessError)): raise
         print("Error:", error, file=sys.stderr)
         return 1
     return 0
