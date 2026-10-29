@@ -1,6 +1,6 @@
 ---
 status: active
-progress: 15
+progress: 20
 next_date: 2026-10-28
 updated: 2026-10-28
 ---
@@ -18,12 +18,12 @@ Both designs are merged to main; nothing built yet.
 
 ## Next
 
-1. Run `/setup-matt-pocock-skills` once for this repo (no tracker configured yet).
-2. Run `/to-spec` from `docs/factory-mode.md` and the decisions below.
-3. `/to-tickets`; first ticket is the spike that checks Orca can run Claude unattended
-   in this host's permission mode.
-4. Right behind factory mode: `/to-spec` from `docs/skill-routing.md` (branch
-   `feature/skill-routing`), then `/to-tickets`.
+1. Run `/ew-matt-to-spec` from `docs/factory-mode.md` and the decisions below
+   (tracker is set up: local markdown under `.scratch/`).
+2. `/ew-matt-to-tickets`; first ticket is the spike that checks Orca can run Claude
+   unattended in this host's permission mode.
+3. Right behind factory mode: `/ew-matt-to-spec` from `docs/skill-routing.md`, then
+   `/ew-matt-to-tickets`.
 
 ## Decisions
 

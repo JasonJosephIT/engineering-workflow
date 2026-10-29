@@ -9,3 +9,17 @@ run `python3 -B workflow.py freeze` and commit workflow.lock.json with the chang
 Do not claim platform parity without actual session evidence. No secrets or
 machine-specific home paths belong in this repository. Independent review of
 installer, version verification and hook behavior may use a fresh subagent.
+
+## Agent skills
+
+### Issue tracker
+
+Local markdown files under `.scratch/<feature>/`, committed. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five roles, recorded as a `Status:` line in each issue file. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `GLOSSARY.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
