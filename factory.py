@@ -386,10 +386,15 @@ def wave_settled(state, ledger, ticket):
     return claimed or ticket not in [t["id"] for t in startable(state, ledger)]
 
 
+def review_due(state, ledger):
+    """The whole feature is done: every started ticket merged (none waiting on the person) and nothing startable."""
+    return (state["mode"] == "running" and state["final_review"] == "not-started" and bool(ledger)
+            and all(e["state"] == "merged" for e in ledger.values()) and not startable(state, ledger))
+
+
 def final_review(state, ledger, out):
-    """Running with tickets started but none left ready, working or approved: one review agent, then pause."""
-    if state["mode"] != "running" or state["final_review"] != "not-started" or not ledger: return
-    if in_flight(ledger) or startable(state, ledger): return  # startable includes requeued ledger entries
+    """One review agent in the integration checkout once the feature is done, then pause."""
+    if not review_due(state, ledger): return
     try:
         state["final_review_handle"] = launch_worker(state["integration_checkout"], final_review_brief(state))
         state["final_review"] = "dispatched"
@@ -542,7 +547,8 @@ def requeue(args):
 
 def precheck(args):
     state, ledger = load(state_dir(args.project))
-    work = in_flight(ledger) or (free_room(state, ledger) > 0 and startable(state, ledger))
+    work = (in_flight(ledger) or (free_room(state, ledger) > 0 and startable(state, ledger))
+            or review_due(state, ledger))
     return 0 if state["mode"] != "paused" and work else 1
 
 

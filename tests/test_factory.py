@@ -600,6 +600,20 @@ class FactoryTests(unittest.TestCase):
         self.assertEqual((self.ledger()['01']['state'], self.state()['mode']), ('ready', 'running'))
         self.assertEqual(self.final_reviews(), [])
 
+    def test_held_high_radius_ticket_blocks_the_final_review_until_approve_merges_it(self):
+        self.set_radius('**Blast radius:** high\n')
+        self.cli('install', '--feature', 'demo'); self.cli('tick'); self.build(); self.approve()
+        self.assertEqual((self.ledger()['01']['state'], self.state()['mode']), ('needs-you', 'running'))
+        self.assertEqual(self.final_reviews(), [])
+        self.cli('precheck', ok=False)
+        self.cli('approve', '01')
+        self.assertEqual(self.ledger()['01']['state'], 'merged')
+        self.cli('precheck')
+        self.cli('tick')
+        self.assertEqual((len(self.final_reviews()), self.state()['mode']), (1, 'paused'))
+        self.set_state(mode='running')
+        self.cli('precheck', ok=False)
+
     def test_no_final_review_when_no_ticket_was_ever_started(self):
         (self.project / '.scratch' / 'demo' / 'issues' / '01-thing.md').write_text(TICKET.replace('ready-for-agent', 'needs-triage'))
         self.git('commit', '-qam', 'triage'); self.cli('install', '--feature', 'demo'); self.cli('tick')
@@ -720,7 +734,7 @@ class FactoryTests(unittest.TestCase):
         second = self.project / '.scratch' / 'demo' / 'issues' / '02-other.md'
         second.write_text(TICKET.replace('01: Thing', '02: Other'))
         self.git('add', '-A'); self.git('commit', '-qm', 'second ticket')
-        self.cli('install', '--feature', 'demo'); self.set_state(final_review='dispatched')  # the last ticket parking must not end the feature here
+        self.cli('install', '--feature', 'demo')
         before = self.git('rev-parse', 'build/demo')
         (self.orca_dir / 'launch-fails').touch(); self.cli('tick'); (self.orca_dir / 'launch-fails').unlink()
         self.cli('requeue', '02'); self.cli('tick')  # both launches failed; 02 now gets a worker
@@ -774,8 +788,7 @@ class FactoryTests(unittest.TestCase):
         self.assertEqual(self.ledger()['01']['state'], 'working')
 
     def test_requeued_ticket_relaunches_in_its_existing_worktree(self):
-        self.cli('install', '--feature', 'demo'); self.set_state(final_review='dispatched')  # the last ticket parking must not end the feature here
-        self.cli('tick'); self.build()
+        self.cli('install', '--feature', 'demo'); self.cli('tick'); self.build()
         self.cli('report', '01', 'blocked', '--reason', 'needs an API decision', '--slowed-by', 'spec',
                  project=self.worktree)
         tip = self.git('rev-parse', 'factory/demo-01')
@@ -799,8 +812,7 @@ class FactoryTests(unittest.TestCase):
 
 
     def test_requeued_ticket_counts_as_work_for_precheck(self):
-        self.cli('install', '--feature', 'demo'); self.set_state(final_review='dispatched')  # the last ticket parking must not end the feature here
-        self.cli('tick')
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
         self.cli('report', '01', 'blocked', '--reason', 'needs an API decision', '--slowed-by', 'spec',
                  project=self.worktree)
         self.cli('precheck', ok=False)
