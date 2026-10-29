@@ -115,8 +115,17 @@ def tickets(checkout, feature):
 
 
 def ready_tickets(state, ledger):
-    return [t for t in tickets(state["integration_checkout"], state["feature"])
-            if t["status"] == "ready-for-agent" and t["id"] not in ledger]
+    found = tickets(state["integration_checkout"], state["feature"])
+    status = {t["id"]: t["status"] for t in found}
+
+    def merged(blocker):  # a blocker outside the ledger is a manual ticket: resolved/done counts
+        return ledger[blocker]["state"] == "merged" if blocker in ledger else status.get(blocker) in ("resolved", "done")
+
+    def unblocked(ticket):
+        line = re.search(r"^\**Blocked by:\**[ \t]*(.*)$", ticket["path"].read_text(), re.M)
+        return all(merged(b) for b in re.findall(r"\b\d\d\b", line.group(1) if line else ""))
+
+    return [t for t in found if t["status"] == "ready-for-agent" and t["id"] not in ledger and unblocked(t)]
 
 
 def move(entry, new_state, reason=None):
@@ -200,20 +209,24 @@ def worker_brief(state, ticket, worktree):
 
 
 def claim(state, ledger, ticket):
-    """Branch from the integration tip, add the worktree and marker, and persist a working entry."""
+    """Branch from the integration tip (pushed when a remote exists), persist the entry, add the worktree and marker."""
     checkout, directory = state["integration_checkout"], Path(state["state_dir"])
     branch = f"factory/{state['feature']}-{ticket['id']}"
     if git("branch", branch, state["integration_branch"], cwd=checkout) is None:
         return None  # already claimed
+    remote = git("remote", cwd=checkout)
+    if remote and git("push", remote.splitlines()[0], branch, cwd=checkout) is None:
+        git("branch", "-D", branch, cwd=checkout)
+        return None  # push rejected: someone else claimed it
     worktree = directory / "worktrees" / f"{state['feature']}-{ticket['id']}"
-    if git("worktree", "add", str(worktree), branch, cwd=checkout) is None:
-        raise ValueError(f"Could not create worktree for {branch}")
-    save(ticket_marker(worktree), {"ticket": ticket["id"], "state_dir": str(directory)})
     entry = ledger[ticket["id"]] = {
         "state": "working", "branch": branch, "worktree": str(worktree), "worker_handle": None,
         "started_at": now(), "turns": 0, "queue_wait_seconds": 0, "gate_seconds": 0,
         "slowed_by": None, "reason": None, "history": [{"at": now(), "state": "working"}]}
-    save(directory / "ledger.json", ledger)  # a crash during launch must not lose the claim
+    save(directory / "ledger.json", ledger)  # persist before the worktree so a crash cannot strand the claim
+    if git("worktree", "add", str(worktree), branch, cwd=checkout) is None:
+        raise ValueError(f"Could not create worktree for {branch}")
+    save(ticket_marker(worktree), {"ticket": ticket["id"], "state_dir": str(directory)})
     return entry
 
 
@@ -239,11 +252,18 @@ def launch(state, entry, ticket, out):
 def start_tickets(state, ledger, out):
     if state["mode"] != "running":
         return
-    for ticket in ready_tickets(state, ledger)[:1]:  # ponytail: one per tick; ticket 03 adds concurrency
+    today = now()[:10]
+    working = sum(e["state"] == "working" for e in ledger.values())
+    started = sum(e["started_at"][:10] == today for e in ledger.values())
+    room = min(state["concurrency"] - working, state["daily_ticket_cap"] - started)
+    for ticket in ready_tickets(state, ledger):
+        if room <= 0:
+            break
         entry = claim(state, ledger, ticket)
         if entry is None:
             out.append(f"{ticket['id']} already claimed")
         else:
+            room -= 1
             launch(state, entry, ticket, out)
 
 
