@@ -145,6 +145,8 @@ you run cycle/resume ─────┘        │
   <div class="card o"><h3>Branch claims</h3><p><code>tick</code> claims a ticket by creating <code>factory/&lt;ticket-id&gt;</code> from the integration tip. It fails if the branch exists, so no ticket starts twice. With a remote, the first push wins.</p></div>
   <div class="card o"><h3>Gate script</h3><p>Per project: <code>.engineering-workflow/gates.sh</code>, last line <code>GATES: PASS</code> or <code>GATES: FAIL &lt;checks&gt;</code>. A missing required check is a FAIL. <code>tick</code> re-runs it before merging and trusts only its own run.</p></div>
   <div class="card o"><h3>Review-pile cap</h3><p><code>stop_if_waiting</code> = 5. When gates, high-radius approvals and capped tickets reach 5, <code>tick</code> starts nothing new: <code>held: 5 waiting on you</code>. It carries on once you clear the pile.</p></div>
+  <div class="card o"><h3>Build queue</h3><p>Workers and <code>tick</code> run <code>gates.sh</code> only via <code>factory gate</code>, which holds one of <code>build_slots</code> (default 1) lock-file slots. Queue wait is logged per ticket and doesn't count toward <code>max_minutes</code>.</p></div>
+  <div class="card o"><h3>What slowed it down</h3><p>Each worker reports one <code>--slowed-by</code> line. The cycle digest lists them next to total queue wait, so the bottleneck is visible, not guessed.</p></div>
   <div class="card a"><h3>Worker brief</h3><p><code>ew-factory</code> is now one-ticket SDD: ponytail + TDD, <code>gates.sh</code>, a fresh Sonnet reviewer that proves the new test fails without the change, one fix round, then <code>factory report</code>.</p></div>
 </div>
 
@@ -216,12 +218,15 @@ you run cycle/resume ─────┘        │
   <div class="card"><h3>v2</h3><p>Post-merge verifier on the integration tip. Stale-ticket requeue. CI shepherd for the integration → main PR.</p></div>
   <div class="card"><h3>v3</h3><p>Operate stations (incident-response, perf watch). Feedback → draft tickets you approve. Risk-tiered auto-merge to main.</p></div>
   <div class="card"><h3>Cross-project</h3><p>One Needs-you view across every factory on this Orca host (CodeAF's best idea).</p></div>
+  <div class="card"><h3>From Theo's video</h3><p>Remote or disposable build VMs when queue wait grows. Snapshot a warm built checkout. Goal tickets that climb a measurable target. AI judge panel for goals with no code check.</p></div>
   <div class="card"><h3>From the SeniorDev video</h3><p>Deterministic gates fed back to the implementer (lint, types, duplication, complexity, dead code). Before/after screenshots. Smoke subset + QA agent. Intake agents. Anonymized seed data. Bug-cluster architecture review.</p></div>
 </div>
 
 <h2 id="decided">Decided</h2>
 <div class="tablewrap"><table>
   <tr><th>Question</th><th>Decision</th></tr>
+  <tr><td>Build queue (10-28)</td><td><code>factory gate</code> with <code>build_slots</code> = 1; wait logged, excluded from <code>max_minutes</code></td></tr>
+  <tr><td>Slowed-by report (10-28)</td><td>One line per worker, shown in the digest with total queue wait</td></tr>
   <tr><td>Loop owner (10-28)</td><td><code>factory tick</code> in Python; the LLM controller is dropped; heartbeat agent only runs <code>tick</code> on a cheap model</td></tr>
   <tr><td>Branch claims (10-28)</td><td><code>factory/&lt;ticket-id&gt;</code>; existing branch = claimed; first push wins with a remote</td></tr>
   <tr><td>Gate script (10-28)</td><td><code>gates.sh</code> ends in <code>GATES: PASS|FAIL</code>; missing check = FAIL; <code>tick</code> re-runs before merge</td></tr>

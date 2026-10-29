@@ -27,6 +27,11 @@ Both designs are merged to main; nothing built yet.
 
 ## Decisions
 
+- 2026-10-28: Build queue in v1: workers and `tick` run `gates.sh` only through
+  `workflow.py factory gate`, which holds one of `build_slots` (default 1) lock-file
+  slots (`fcntl.flock`). Queue wait is logged per ticket and excluded from
+  `max_minutes`. Each worker reports one `--slowed-by` line; the cycle digest shows
+  them next to total queue wait.
 - 2026-10-28: Factory loop is owned by code (from Super Simple Software Factory):
   `workflow.py factory tick` (Python, idempotent, lock file) does sequencing, caps,
   merges and mode changes. The LLM controller is dropped; `ew-factory` becomes the
@@ -122,3 +127,9 @@ Both designs are merged to main; nothing built yet.
   - Docs/changelog agent; strip issue-reference comments agents leave in code.
   - Not adopting: his "TDD is a waste of tokens" stance; the workflow keeps TDD at
     public seams.
+- From Theo's "How To Give Claude Unlimited Usage" (watched 2026-10-28):
+  - Remote build compute when queue wait grows: Orca SSH hosts first, then disposable
+    VMs (he uses a service the captions call "boat.dev"; unverified).
+  - Snapshot a warm, built checkout so workers skip full setup.
+  - Goal tickets that climb a measurable target ("2x faster, all checks pass").
+  - AI judge panel comparing screenshots for goals with no code check.

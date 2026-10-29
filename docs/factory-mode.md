@@ -65,7 +65,7 @@ hourly heartbeat is only the backstop.
 - `workflow.py factory install|status|pause|resume|cycle|tick|report|uninstall`.
 - State file `.engineering-workflow/factory.json` (gitignored, local to the host):
   `mode` (`running|paused|once|draining`), `concurrency`, `daily_ticket_cap`,
-  `stop_if_waiting`, `max_turns`, `max_minutes`, `automation_id`,
+  `stop_if_waiting`, `build_slots`, `max_turns`, `max_minutes`, `automation_id`,
   `integration_branch`, `last_tick`.
 - One Orca automation, the heartbeat:
   `orca automations create --name "factory:<project>" --trigger hourly
@@ -81,7 +81,7 @@ hourly heartbeat is only the backstop.
   load ew-ponytail and ew-matt-tdd, implement on the claimed branch, run `gates.sh`,
   have a fresh Sonnet reviewer read the diff cold and prove the new test fails without
   the change, fix once if needed, then `workflow.py factory report <ticket>
-  approved|blocked`.
+  approved|blocked --slowed-by "<one line>"`.
 - Orca cards as the dashboard: `tick` sets each ticket worktree's `--workspace-status`
   (in-progress / in-review / completed) and a one-line `--comment`. Needs-Human =
   `orca orchestration gate-create` + `worktree set --unread`.
@@ -102,7 +102,32 @@ a FAIL (fail closed). `factory install` writes a starter from the project's own
 commands and asks you to approve it.
 
 The worker runs it while working. `tick` runs it again on the ticket branch before
-merging and trusts only its own run, never the agent's claim.
+merging and trusts only its own run, never the agent's claim. Both always run it
+through the build queue: `workflow.py factory gate`, never `gates.sh` directly.
+
+## Build queue
+
+Three workers building and testing at once on one machine slow each other down,
+and the slowdown looks like agents being slow. (Theo's agents waited up to 12 hours
+for build machines before he queued and moved builds.)
+
+- `workflow.py factory gate` takes one of `build_slots` slots before running
+  `gates.sh`, and gives it back when done. Default 1 slot; raise it if the machine
+  has the cores and memory. Slots are lock files under
+  `.engineering-workflow/factory/slots/` (`fcntl.flock`, standard library), so a
+  crashed worker frees its slot automatically.
+- Each ticket's ledger entry records its queue wait and its gate run time.
+  `max_minutes` counts working time only, so waiting in the queue never caps a ticket.
+- The worker brief tells agents to run heavy builds and the full test suite only
+  through `factory gate`; quick focused tests while iterating stay outside the queue.
+
+## What slowed it down
+
+Each worker ends with `factory report ... --slowed-by "<one line>"`: the biggest
+thing that cost it time (waiting for builds, a flaky test, missing context, a tool
+it lacked). The cycle digest lists those lines next to total queue wait, so you can
+see the factory's bottleneck rather than guess at it. Recurring answers go to the
+Idea Shelf as factory changes.
 
 ## Review-pile back-pressure
 
@@ -138,7 +163,8 @@ Needs-Human with the last failing output.
   together. Counted by the workflow's existing PostToolUse hook, which increments a
   per-ticket counter in the ledger when `EW_FACTORY_TICKET` is set in the worker's
   environment. At the cap the hook tells the agent to stop and report BLOCKED.
-- `max_minutes` (default 90): wall-clock backstop enforced by `tick` with
+- `max_minutes` (default 90): working-time backstop (build-queue wait excluded),
+  enforced by `tick` with
   `orca orchestration worker-stop`, for agents that never reach a hook.
 - A capped ticket is marked `capped` (not `failed`); its worktree stays. The digest
   asks one question for it: what factory change (skill, CLAUDE.md rule, ticket shape)
@@ -210,9 +236,20 @@ back to `paused` once every ticket in it is merged or waiting on you. "Run until
   agent that acts as a user; intake agents (triage from Sentry/Slack, refinement
   with repro evidence, prioritizer); anonymized production-like seed data;
   bug-cluster review that points at architecture; strip issue-reference comments.
+- From Theo's "How To Give Claude Unlimited Usage" (2026-10-28): offload builds to
+  disposable remote VMs or Orca SSH hosts when the queue wait grows (he used a
+  service the captions call "boat.dev"); snapshot a warm, built checkout so workers
+  skip the full setup; goal tickets that climb a measurable target ("2x faster, all
+  checks still pass"); an AI judge panel comparing screenshots when a goal has no
+  code check.
 
 ## Decisions (2026-10-28)
 
+- Build queue: workers and `tick` run `gates.sh` only through `workflow.py factory
+  gate`, which holds one of `build_slots` (default 1) file-lock slots. Queue wait is
+  logged per ticket and excluded from `max_minutes`.
+- Each worker reports one "slowed by" line; the cycle digest shows them next to total
+  queue wait.
 - Code owns the loop: `workflow.py factory tick` (Python) does sequencing, caps,
   merges and mode changes; the LLM controller is dropped. `ew-factory` becomes the
   one-ticket worker brief. The heartbeat agent only runs `tick` on a cheap model.
