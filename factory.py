@@ -10,6 +10,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import time
 
 from workflow import encoded, find_project, git, read_json, write_atomic
 
@@ -144,6 +145,31 @@ def run_gate(checkout):
     return bool(lines) and lines[-1] == "GATES: PASS", output
 
 
+def queued_gate(directory, checkout):
+    """Run the gate inside one of build_slots slot locks; return (passed, output, waited, ran) seconds."""
+    state_file = Path(directory) / "state.json"
+    slots = read_json(state_file)["build_slots"] if state_file.is_file() else 1
+    (Path(directory) / "slots").mkdir(parents=True, exist_ok=True)
+    begin = time.monotonic()
+    while True:
+        for number in range(slots):
+            handle = open(Path(directory) / "slots" / f"{number}.lock", "a")
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)  # the kernel frees it if we die
+            except BlockingIOError:
+                handle.close(); continue
+            with handle:
+                started = time.monotonic()
+                passed, output = run_gate(checkout)
+                return passed, output, started - begin, time.monotonic() - started
+        time.sleep(0.1)  # ponytail: polling; a fair FIFO queue only if starvation shows up
+
+
+def record_gate(entry, waited, ran):
+    entry["queue_wait_seconds"] = round(entry.get("queue_wait_seconds", 0) + waited, 3)
+    entry["gate_seconds"] = round(ran, 3)
+
+
 def starter_gate(checkout):
     checkout, checks = Path(checkout), []
     if any((checkout / "tests").glob("*.py")): checks.append(("tests", "python3 -m unittest discover -s tests"))
@@ -157,11 +183,12 @@ def starter_gate(checkout):
 
 # --- Tick steps -------------------------------------------------------------------
 
-def gate_ticket(entry):
+def gate_ticket(state, entry):
     """Return a needs-you reason, or None when the ticket branch is clean and passes its gate."""
     if git("status", "--porcelain", cwd=entry["worktree"]) != "":
         return "uncommitted changes in the worktree"
-    passed, _ = run_gate(entry["worktree"])
+    passed, _, waited, ran = queued_gate(state["state_dir"], entry["worktree"])
+    record_gate(entry, waited, ran)
     return None if passed else "gates failed on the ticket branch"
 
 
@@ -182,7 +209,7 @@ def merge_approved(state, ledger, out):
     for ticket, entry in ledger.items():
         if entry["state"] != "approved":
             continue
-        reason = gate_ticket(entry) or merge_ticket(state, entry)
+        reason = gate_ticket(state, entry) or merge_ticket(state, entry)
         if reason:
             move(entry, "needs-you", reason)
             out.append(f"{ticket} needs you: {reason}")
@@ -194,7 +221,7 @@ def merge_approved(state, ledger, out):
 def worker_brief(state, ticket, worktree):
     path = Path(worktree) / Path(ticket["path"]).relative_to(state["integration_checkout"])
     return (f"You are a factory worker. Implement the ticket {path} on this worktree's branch only. "
-            f"Run the gates with: {workflow_command('gate', '--project', worktree)} and commit your work. "
+            f"Run the gates with: {workflow_command('gate', '--ticket', ticket['id'], '--project', worktree)} and commit your work. "
             f"Finish with: {workflow_command('report', ticket['id'], 'approved', '--project', worktree)}"
             f' --slowed-by "<one line>" (or report blocked --reason "<one line>").')
 
@@ -302,8 +329,16 @@ def status(args):
 
 
 def gate(args):
-    passed, output = run_gate(find_project(args.project))
+    directory, marker = state_dir(args.project), ticket_marker(args.project)
+    ticket = args.for_ticket or (read_json(marker)["ticket"] if marker.is_file() else None)
+    passed, output, waited, ran = queued_gate(directory, find_project(args.project))
     print(output, end="")
+    if ticket:
+        with tick_lock(directory):  # short: the gate itself ran outside the lock
+            state, ledger = load(directory)
+            if ticket in ledger:
+                record_gate(ledger[ticket], waited, ran)
+                save(directory / "ledger.json", ledger)
     return 0 if passed else 1
 
 
@@ -335,6 +370,7 @@ def add_parser(sub):
     f.add_argument("--integration-branch", help="Default: the branch checked out in the project")
     f.add_argument("--paused", action="store_true"); f.add_argument("--allow-bypass", action="store_true")
     f.add_argument("--slowed-by"); f.add_argument("--reason")
+    f.add_argument("--ticket", dest="for_ticket", help="gate: record queue wait and run time on this ticket")
 
 
 def run(args):
