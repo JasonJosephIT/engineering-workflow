@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
+import shlex
 import signal
 import subprocess
 import sys
@@ -917,6 +918,33 @@ class FactoryTests(unittest.TestCase):
         self.assertEqual(self.hook('PreToolUse', **read), {})
         self.cli('tick')
         self.assertEqual(self.ledger()['01']['state'], 'working')
+
+    def test_at_the_turn_cap_only_the_workers_own_blocked_report_gets_through(self):
+        self.add_ticket('02'); self.cli('install', '--feature', 'demo'); self.set_state(max_turns=1); self.cli('tick')
+        self.hook('PostToolUse', tool_name='Read', tool_input={'file_path': 'README.md'})
+        capped = self.denied('Factory turn cap reached; run factory report 01 blocked')
+        base = shlex.join([sys.executable, str(ROOT / 'workflow.py'), 'factory', 'report'])
+        allowed = [f'{base} 01 blocked', f'python3 {shlex.quote(str(ROOT))}/workflow.py factory report 01 blocked',
+                   f'{base} 01 blocked --reason "needs an API decision" --slowed-by spec',
+                   f'{base} 01 blocked --detach --project {shlex.quote(str(self.worktree))} --reason stuck']
+        for command in allowed:
+            with self.subTest(allowed=command): self.assertEqual(self.bash(command), {})
+        denied = [f'{base} 02 blocked', f'{base} 01 approved', f'{base} 01 blocked; rm -rf x',
+                  f'{base} 01 blocked && rm -rf x', f'{base} 01 blocked --reason $(id)',
+                  f'{base} 01 blocked --reason `id`', f'{base} 01 blocked\nrm -rf x', f'{base} 01 blocked extra',
+                  f'{base} 01 blocked --allow-bypass', f'{base} 01 blocked --reason a --reason b',
+                  f'{base} 01 blocked --reason', f'{base} 01 blocked --reason=x', f'{base} 01 blocked | tee x',
+                  f'{base} 01 blocked > x', f'sh {ROOT}/workflow.py factory report 01 blocked',
+                  f'{sys.executable} {ROOT}/other.py factory report 01 blocked', f'{base} 01 blocked "unclosed']
+        for command in denied:
+            with self.subTest(denied=command): self.assertEqual(self.bash(command), capped)
+        read = {'tool_name': 'Read', 'tool_input': {'file_path': 'README.md'}}
+        self.assertEqual(self.hook('PreToolUse', **read), capped)
+        self.assertEqual(self.hook('PreToolUse', tool_name='Write', tool_input={'command': f'{base} 01 blocked'}), capped)
+        run = subprocess.run(shlex.split(f'{base} 01 blocked --reason stuck'), cwd=self.worktree,
+                             text=True, capture_output=True, env=self.env)
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertEqual((self.ledger()['01']['state'], self.ledger()['01']['reason']), ('needs-you', 'stuck'))
 
     def test_hooks_outside_a_ticket_worktree_neither_count_nor_cap(self):
         self.cli('install', '--feature', 'demo'); self.set_state(max_turns=1); self.cli('tick')

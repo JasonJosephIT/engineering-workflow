@@ -520,6 +520,29 @@ def factory_worker(project):
     except Exception: return None  # broad on purpose: the caller refuses the tool call
 
 
+SHELL_TOOLS = ("Bash", "exec_command", "shell_command", "run_shell_command", "run_command")
+
+
+def own_blocked_report(command, ticket):
+    """True only for `<python> <dir>/workflow.py factory report <ticket> blocked` plus
+    --reason X, --slowed-by X, --project X, --detach, each at most once: what a capped worker may still run."""
+    if any(c in command for c in ";&|`$<>()\n\r\\"): return False
+    try: words = shlex.split(command)
+    except ValueError: return False
+    if (len(words) < 6 or not re.fullmatch(r"python[0-9.]*", Path(words[0]).name)
+            or Path(words[1]).name != "workflow.py" or words[2:6] != ["factory", "report", ticket, "blocked"]):
+        return False
+    seen, rest = set(), words[6:]
+    while rest:
+        flag = rest.pop(0)
+        if flag in seen or flag not in ("--reason", "--slowed-by", "--project", "--detach"): return False
+        seen.add(flag)
+        if flag != "--detach":
+            if not rest: return False
+            rest.pop(0)
+    return True
+
+
 def default_hook_output(platform, event):
     if platform == "agy":
         if event == "PreToolUse": return {"decision": "ask"}
@@ -573,9 +596,10 @@ def hook(platform, data, event=None):
         decision, reason = None, "Claude Guard requires local review of this command; command text withheld."
         if ticket_tree and not worker:
             decision, reason = "deny", "Factory state unreadable; tool call refused"
-        elif worker and worker[1] >= worker[2]:
+        elif worker and worker[1] >= worker[2] and not (
+                tool in SHELL_TOOLS and isinstance(command, str) and own_blocked_report(command, worker[0])):
             decision, reason = "deny", f"Factory turn cap reached; run factory report {worker[0]} blocked"
-        elif tool in ("Bash", "exec_command", "shell_command", "run_shell_command", "run_command") and isinstance(command, str):
+        elif tool in SHELL_TOOLS and isinstance(command, str):  # the capped report still goes through Guard
             decision = guard_command(command, runtime)
             if decision == "ask" and worker:  # nobody watches a factory worker, so a prompt would wait forever
                 try: factory.flag_permission(project)
