@@ -11,12 +11,13 @@ updated: 2026-10-29
 
 Factory mode v0.3.0 is built on `build/factory-mode` (tickets 01-10 merged, final
 review done and its findings fixed): 127 tests and `verify --expected 0.3.0` pass;
-main is untouched (12c0318). Not pushed, not merged to main. Build log:
+main is untouched (12c0318). Pushed; open as PR #6 against main, not merged. Build log:
 `.engineering-workflow-state/sdd/factory-mode/progress.md`.
 
 ## Next
 
-1. Review and merge the `build/factory-mode` PR, then tag/release v0.3.0.
+1. Review and merge PR JasonJosephIT/engineering-workflow#6 (`build/factory-mode` → main),
+   then tag/release v0.3.0.
 3. Remove the `orca-spike` repo entry in Orca's UI (left by the spike; no CLI for it).
 4. First real factory run on a small feature to confirm the unverified Orca facts.
 5. Skill routing: spec written (`.scratch/skill-routing/spec.md`); next
