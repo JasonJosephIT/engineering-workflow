@@ -1,6 +1,6 @@
 ---
 status: active
-progress: 20
+progress: 30
 next_date: 2026-10-28
 updated: 2026-10-28
 ---
@@ -14,19 +14,27 @@ approved tickets in parallel after `/to-tickets`, with install / pause (drain or
 / resume / one-cycle controls. Design draft: `docs/factory-mode.md` (+ `.html`).
 Skill routing, add-ons and the `ew-flightdeck` dashboard are designed to ship right
 after it (`docs/skill-routing.md`). `docs/ew-map.svg` shows how both fit the workflow.
-Both designs are merged to main; nothing built yet.
+Both designs are merged to main. Factory spec: `.scratch/factory-mode/spec.md`. Nothing built yet.
 
 ## Next
 
-1. Run `/ew-matt-to-spec` from `docs/factory-mode.md` and the decisions below
-   (tracker is set up: local markdown under `.scratch/`).
-2. `/ew-matt-to-tickets`; first ticket is the spike that checks Orca can run Claude
-   unattended in this host's permission mode.
-3. Right behind factory mode: `/ew-matt-to-spec` from `docs/skill-routing.md`, then
+1. `/ew-matt-to-tickets` from `.scratch/factory-mode/spec.md`; first ticket is the
+   manual spike (unattended Claude via Orca, hooks firing in Orca-launched agents,
+   cheap-model heartbeat, worker running `factory report`, Orca card/stop/liveness).
+2. Right behind factory mode: `/ew-matt-to-spec` from `docs/skill-routing.md`, then
    `/ew-matt-to-tickets`.
 
 ## Decisions
 
+- 2026-10-28: Factory spec written (`.scratch/factory-mode/spec.md`, ready-for-agent).
+  Changes from the design draft: state lives in `.engineering-workflow-state/factory/`;
+  ticket worktrees come from `git worktree add` on the claimed branch, then
+  `orca agent launch`; the turn hook finds its ticket via a marker file in the
+  worktree, not an env var; needs-you is the Orca card (`in-review`, `NEEDS YOU:`
+  comment, unread dot), not orchestration gates; a ticket without a blast radius is
+  treated as high; v1 reads tickets only from the local `.scratch/` tracker. Added
+  `factory approve` and `factory requeue` for clearing the pile. Test seam: the
+  `workflow.py` CLI as a subprocess with a fake `orca` on PATH.
 - 2026-10-28: Build queue in v1: workers and `tick` run `gates.sh` only through
   `workflow.py factory gate`, which holds one of `build_slots` (default 1) lock-file
   slots (`fcntl.flock`). Queue wait is logged per ticket and excluded from

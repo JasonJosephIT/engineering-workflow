@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en" data-lavish-annotate="on">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Factory Mode Spec</title>
+<style>
+:root{
+  --bg:#f7f6f2; --panel:#ffffff; --ink:#1d1d1b; --muted:#6b6a63; --line:#dcdad2;
+  --human:#2f6fdb; --human-bg:#e7efff; --agent:#1f8a5b; --agent-bg:#e3f4ec;
+  --orca:#8a4fd1; --orca-bg:#f1e8fc; --warn:#c26a00; --warn-bg:#fff1dc; --stop:#c23b3b;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#151513; --panel:#1f1f1c; --ink:#ecebe6; --muted:#a3a198; --line:#3a3934;
+    --human:#7aa7ff; --human-bg:#1d2a44; --agent:#5fd19c; --agent-bg:#173126;
+    --orca:#c39bff; --orca-bg:#2c2140; --warn:#ffb456; --warn-bg:#3a2a12; --stop:#ff7b7b;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#151513; --panel:#1f1f1c; --ink:#ecebe6; --muted:#a3a198; --line:#3a3934;
+  --human:#7aa7ff; --human-bg:#1d2a44; --agent:#5fd19c; --agent-bg:#173126;
+  --orca:#c39bff; --orca-bg:#2c2140; --warn:#ffb456; --warn-bg:#3a2a12; --stop:#ff7b7b;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif}
+main{max-width:1040px;margin:0 auto;padding:28px 16px 64px}
+h1{font-size:28px;margin:0 0 4px;letter-spacing:-.01em}
+h2{font-size:19px;margin:36px 0 10px}
+h3{font-size:15px;margin:0 0 6px}
+p{margin:6px 0}
+.sub{color:var(--muted)}
+.pill{display:inline-block;font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted);margin-right:6px}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr))}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}
+.card.h{border-left:4px solid var(--human)} .card.a{border-left:4px solid var(--agent)} .card.o{border-left:4px solid var(--orca)} .card.w{border-left:4px solid var(--warn)}
+code,.mono{font-family:var(--mono);font-size:12.5px}
+code{background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:0 4px;overflow-wrap:anywhere}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.5;margin:8px 0}
+table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);background:var(--bg)}
+tr:last-child td{border-bottom:0}
+.tablewrap{overflow-x:auto}
+.same{color:var(--muted)} .new{color:var(--orca);font-weight:600}
+svg{width:100%;height:auto;display:block}
+svg text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:var(--ink)}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--muted);margin:6px 0 0}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px;background:var(--c)}
+.cmd{display:grid;grid-template-columns:minmax(0,190px) minmax(0,1fr);gap:4px 14px;align-items:baseline}
+.cmd .mono{color:var(--orca);font-weight:600}
+form.q{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin:10px 0}
+form.q label{display:block;padding:5px 0;cursor:pointer}
+form.q .rec{font-size:11px;color:var(--agent);font-weight:700;margin-left:6px}
+button{font:inherit;padding:7px 14px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer}
+button.primary{background:var(--human);border-color:var(--human);color:#fff}
+.note{background:var(--warn-bg);border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:8px;padding:10px 12px}
+</style>
+<style>details{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:10px 0} summary{cursor:pointer;font-weight:600} ol li{margin:4px 0} .step{display:grid;grid-template-columns:28px minmax(0,1fr);gap:8px;margin:6px 0} .num{width:24px;height:24px;border-radius:50%;background:var(--orca-bg);color:var(--orca);display:grid;place-items:center;font-weight:700;font-size:12px}</style>
+</head><body><main>
+<header><span class="pill">Status: ready-for-agent</span><span class="pill">v0.3.0</span><span class="pill">.scratch/factory-mode/spec.md</span>
+<h1>Factory mode spec</h1>
+<p class="sub">After tickets are approved, an Orca-hosted loop keeps building them in parallel until you pause it. Code owns the loop; agents own one ticket each.</p></header>
+
+<div class="grid" style="margin-top:18px">
+<div class="card w"><h3>Problem</h3><p>Building approved tickets needs a person in a chat: one session, one controller, stops when the session does. No safe way to walk away, run tickets in parallel, or stop part-way and resume.</p></div>
+<div class="card a"><h3>Solution</h3><p><code>workflow.py factory tick</code> (plain Python) runs the loop: limits, merges, modes. Each ticket gets its own worktree and Claude agent via Orca. Hourly heartbeat + each finishing worker trigger <code>tick</code>.</p></div>
+</div>
+
+<h2>Ticket lifecycle</h2>
+<svg viewBox="0 0 1000 300" role="img" aria-labelledby="lt"><title id="lt">Ledger states for one ticket</title>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker></defs>
+<g id="s-ready"><title>ready: ready-for-agent, blockers merged</title><rect x="20" y="40" width="120" height="44" rx="22" fill="var(--panel)" stroke="var(--human)" stroke-width="2"/><text x="80" y="67" text-anchor="middle" font-size="14" font-weight="700">ready</text></g>
+<g id="s-working"><title>working: branch claimed, worktree, agent launched</title><rect x="220" y="40" width="130" height="44" rx="22" fill="var(--panel)" stroke="var(--agent)" stroke-width="2"/><text x="285" y="67" text-anchor="middle" font-size="14" font-weight="700">working</text></g>
+<g id="s-approved"><title>approved: worker reported approved; tick re-runs gates</title><rect x="430" y="40" width="130" height="44" rx="22" fill="var(--panel)" stroke="var(--agent)" stroke-width="2"/><text x="495" y="67" text-anchor="middle" font-size="14" font-weight="700">approved</text></g>
+<g id="s-merged"><title>merged into integration branch</title><rect x="760" y="40" width="130" height="44" rx="22" fill="var(--agent-bg)" stroke="var(--agent)" stroke-width="2"/><text x="825" y="67" text-anchor="middle" font-size="14" font-weight="700">merged</text></g>
+<g id="s-needs"><title>needs-you: high radius, blocked, gates fail or conflict</title><rect x="600" y="200" width="150" height="44" rx="22" fill="var(--warn-bg)" stroke="var(--warn)" stroke-width="2"/><text x="675" y="227" text-anchor="middle" font-size="14" font-weight="700">needs-you</text></g>
+<g id="s-capped"><title>capped: 100 turns or 90 working minutes</title><rect x="220" y="200" width="130" height="44" rx="22" fill="var(--panel)" stroke="var(--stop)" stroke-width="2"/><text x="285" y="227" text-anchor="middle" font-size="14" font-weight="700">capped</text></g>
+<g id="s-int"><title>interrupted: pause --now or dead worker; keeps branch and worktree</title><rect x="20" y="200" width="140" height="44" rx="22" fill="var(--panel)" stroke="var(--stop)" stroke-width="2"/><text x="90" y="227" text-anchor="middle" font-size="14" font-weight="700">interrupted</text></g>
+<line x1="140" y1="62" x2="218" y2="62" stroke="var(--muted)" marker-end="url(#a)"/><text x="179" y="54" text-anchor="middle" font-size="11" style="fill:var(--muted)">claim</text>
+<line x1="350" y1="62" x2="428" y2="62" stroke="var(--muted)" marker-end="url(#a)"/><text x="389" y="54" text-anchor="middle" font-size="11" style="fill:var(--muted)">report</text>
+<line x1="560" y1="62" x2="758" y2="62" stroke="var(--muted)" marker-end="url(#a)"/><text x="660" y="54" text-anchor="middle" font-size="11" style="fill:var(--muted)">gates pass · low/medium</text>
+<path d="M520 84 L640 198" fill="none" stroke="var(--warn)" marker-end="url(#a)"/><text x="600" y="130" font-size="11" style="fill:var(--muted)">high · fail · conflict</text>
+<path d="M330 84 L610 205" fill="none" stroke="var(--warn)" stroke-dasharray="4 3" marker-end="url(#a)"/><text x="410" y="160" font-size="11" style="fill:var(--muted)">blocked</text>
+<line x1="285" y1="84" x2="285" y2="198" stroke="var(--stop)" marker-end="url(#a)"/><text x="292" y="150" font-size="11" style="fill:var(--muted)">cap</text>
+<path d="M240 84 L120 198" fill="none" stroke="var(--stop)" marker-end="url(#a)"/><text x="130" y="150" font-size="11" style="fill:var(--muted)">pause --now</text>
+<path d="M750 222 Q830 160 825 86" fill="none" stroke="var(--human)" marker-end="url(#a)"/><text x="800" y="170" font-size="11" style="fill:var(--human)">approve</text>
+<text x="380" y="285" text-anchor="middle" font-size="12" style="fill:var(--human)">capped · interrupted · blocked ── requeue ──▶ ready</text>
+</svg>
+
+<h2>What one <code>tick</code> does</h2>
+<div class="card">
+<div class="step"><span class="num">1</span><span><b>Reconcile</b>: workers Orca reports dead that never reported → interrupted.</span></div>
+<div class="step"><span class="num">2</span><span><b>Caps</b>: over 90 working minutes (queue wait excluded) or 100 turns → stop, capped.</span></div>
+<div class="step"><span class="num">3</span><span><b>Merge</b>: re-run gates through the build queue; PASS + low/medium → merge into integration; else needs-you.</span></div>
+<div class="step"><span class="num">4</span><span><b>Back-pressure</b>: 5 waiting on you → start nothing, show <code>held</code>.</span></div>
+<div class="step"><span class="num">5</span><span><b>Start</b>: ready tickets up to concurrency 3 and daily cap 10; claim branch, <code>git worktree add</code>, launch Claude via Orca.</span></div>
+<div class="step"><span class="num">6</span><span><b>Final review</b>: queue empty in running mode → one final-review agent, then pause.</span></div>
+<div class="step"><span class="num">7</span><span><b>Bookkeeping</b>: modes (once/draining → paused), Orca cards, digest.</span></div>
+</div>
+
+<h2>Commands</h2>
+<div class="tablewrap"><table>
+<tr><th>Command</th><th>Does</th></tr>
+<tr><td><code>install</code> / <code>uninstall</code></td><td>Preflight, state, hourly heartbeat. Uninstall keeps ledger and worktrees.</td></tr>
+<tr><td><code>resume</code> / <code>cycle</code></td><td>Run until empty, then final review and pause / one wave, then pause.</td></tr>
+<tr><td><code>pause</code> / <code>pause --now</code></td><td>Drain at ticket boundary / stop workers now, mark interrupted.</td></tr>
+<tr><td><code>approve</code> / <code>requeue</code></td><td>Merge a held ticket / put capped, blocked or interrupted back in the queue.</td></tr>
+<tr><td><code>tick</code> / <code>precheck</code></td><td>The loop / heartbeat gate: exit 0 only when not paused and there is work.</td></tr>
+<tr><td><code>gate</code> / <code>report</code></td><td>Run gates.sh in a build slot / worker's last step: approved|blocked + slowed-by.</td></tr>
+<tr><td><code>status</code> / <code>set</code></td><td>One-line summary + details / tune concurrency, slots, caps, pile limit.</td></tr>
+</table></div>
+
+<h2>Test seam</h2>
+<div class="grid">
+<div class="card o"><h3>One seam: the CLI</h3><p>Tests run <code>workflow.py factory …</code> and <code>workflow.py hook</code> as subprocesses, like <code>tests/test_reviews.py</code>.</p></div>
+<div class="card o"><h3>Fakes</h3><p>Temp git repo with integration branch, ticket files under <code>.scratch/</code>, a tiny <code>gates.sh</code>, and a fake <code>orca</code> on PATH that logs calls.</p></div>
+<div class="card w"><h3>Real Orca</h3><p>Not in the unit suite. The first ticket is a manual spike on this host.</p></div>
+</div>
+
+<h2>Changed from the design draft</h2>
+<div class="tablewrap"><table>
+<tr><th>Draft</th><th>Spec</th><th>Why</th></tr>
+<tr><td>State in <code>.engineering-workflow/</code></td><td><code>.engineering-workflow-state/factory/</code></td><td>Beside goal state; outside verified package files</td></tr>
+<tr><td>Orca creates worktree</td><td><code>git worktree add</code> + <code>orca agent launch</code></td><td>Branch claim must be the worktree's branch</td></tr>
+<tr><td><code>EW_FACTORY_TICKET</code> env</td><td>Marker file in the worktree</td><td>Orca launch may not pass env</td></tr>
+<tr><td>Orchestration gates</td><td>Card status + <code>NEEDS YOU:</code> comment + unread dot</td><td>Gates need orchestration tasks the factory does not use</td></tr>
+</table></div>
+
+<details><summary>All 42 user stories</summary><ol><li>As a developer, I want the workflow to offer a factory right after I approve tickets, so that I don&#x27;t have to remember a separate setup step.</li><li>As a developer, I want to choose between building in this session, installing and running, installing paused, or running one cycle, so that I pick how much autonomy to grant each time.</li><li>As a developer, I want `factory install` to refuse to run when Orca is missing, the repo is not registered in Orca, the integration branch is main/master, or the project has no gate script, so that a broken setup never starts unattended work.</li><li>As a developer, I want install to show me a starter gate script built from the project&#x27;s own commands when none exists, so that I approve the checks rather than write them from scratch.</li><li>As a developer, I want one hourly heartbeat that costs nothing when the factory is paused or has nothing to do, so that leaving the factory installed is free.</li><li>As a developer, I want the heartbeat agent to only run `factory tick` on a cheap model, so that no expensive agent makes scheduling decisions.</li><li>As a developer, I want `tick` to be safe to run any number of times, concurrently, so that a heartbeat and a finishing worker can never double-start or double-merge.</li><li>As a developer, I want ready tickets to be the tracker tickets marked `ready-for-agent` whose blockers have all merged into the integration branch, so that dependency order from `/to-tickets` is honoured.</li><li>As a developer, I want each ticket claimed by creating its own branch from the integration tip, so that no ticket ever starts twice, even across hosts.</li><li>As a developer, I want each ticket built in its own git worktree with its own Claude agent launched through Orca, so that tickets are isolated and visible in Orca&#x27;s sidebar.</li><li>As a developer, I want at most 3 tickets building at once by default, and a way to change it, so that the factory fits my machine.</li><li>As a developer, I want a daily cap on tickets started (default 10), so that one runaway day can&#x27;t burn a week of usage.</li><li>As a developer, I want each worker to follow one-ticket SDD (ponytail, TDD, gate script, fresh reviewer, at most one fix round), so that factory tickets meet the same bar as in-session ones.</li><li>As a developer, I want the reviewer to prove the new test fails without the change, so that tests that pass by accident are caught.</li><li>As a developer, I want every build and full test run to go through a shared build queue with a fixed number of slots (default 1), so that parallel workers don&#x27;t slow each other down.</li><li>As a developer, I want queue wait recorded per ticket and excluded from the time cap, so that waiting for a build slot never gets a ticket capped.</li><li>As a developer, I want a ticket stopped at 100 agent turns, with further tool calls refused, so that a looping agent cannot burn the subscription.</li><li>As a developer, I want a ticket stopped after 90 minutes of working time, so that agents that never hit the turn hook still stop.</li><li>As a developer, I want a capped ticket kept (worktree and commits intact) and marked `capped`, not failed, so that I can look at it and requeue it.</li><li>As a developer, I want each worker to finish by reporting approved or blocked plus one line on what slowed it down, so that I can see the factory&#x27;s bottleneck.</li><li>As a developer, I want `tick` to re-run the gate script itself on the ticket branch before merging and trust only its own run, so that an agent can&#x27;t claim a pass it didn&#x27;t earn.</li><li>As a developer, I want approved low and medium blast-radius tickets merged into the integration branch automatically, so that routine work flows without me.</li><li>As a developer, I want high blast-radius tickets (schema/data, auth, payments, secrets, design system, more than one service) to wait for my approval before merging, so that risky changes always get my eyes.</li><li>As a developer, I want merge conflicts to send the ticket to me instead of being resolved by guesswork, so that the integration branch stays sound.</li><li>As a developer, I want everything waiting on me shown on the ticket&#x27;s Orca card (status, one-line comment, unread dot), so that I see it where I already work.</li><li>As a developer, I want the factory to stop starting tickets once 5 items are waiting on me, and carry on by itself when I clear them, so that review work never piles up beyond what I can handle.</li><li>As a developer, I want `factory approve &lt;ticket&gt;` to merge a held ticket and `factory requeue &lt;ticket&gt;` to put a capped, blocked or interrupted ticket back in the queue, so that I can clear the pile from the command line.</li><li>As a developer, I want `factory pause` to stop starting tickets and let in-flight ones finish before pausing, so that I can stop at a clean ticket boundary.</li><li>As a developer, I want `factory pause --now` to stop every worker immediately, keep their worktrees, and mark them interrupted, so that I can halt everything mid-ticket without losing work.</li><li>As a developer, I want an interrupted ticket to resume from its existing branch and worktree on the next cycle, so that stopping never throws work away.</li><li>As a developer, I want `factory resume` to run until the queue is empty, then run the final branch review and pause itself, so that a whole feature can finish unattended.</li><li>As a developer, I want `factory cycle` to start exactly one wave (every ticket ready right now), carry it to merged or waiting-on-me, then pause, so that I can let it run a bounded amount.</li><li>As a developer, I want disabling the automation in Orca&#x27;s UI to act as a hard pause, so that I can stop it from Orca without a terminal.</li><li>As a developer, I want `factory status` to print one line like `factory: paused · 4 ready · 2 building · 1 needs you · held` plus the details, so that I know the state at a glance.</li><li>As a developer, I want that status line in every session-start report for the repo, so that I see where the factory is the moment I open a session.</li><li>As a developer, I want a digest after each wave listing merges, waiting items, caps, queue wait and the slowed-by lines, so that I can review a night&#x27;s work in a minute.</li><li>As a developer, I want `factory set &lt;setting&gt; &lt;value&gt;` for concurrency, build slots, caps and the pile limit, so that I can tune without reinstalling.</li><li>As a developer, I want `factory uninstall` to remove the heartbeat but keep the ledger and worktrees, so that removing the factory never destroys work.</li><li>As a developer, I want the factory never to merge or push to main, deploy, publish issues or use bypass permissions, so that unattended runs stay inside the limits I already trust.</li><li>As a developer, I want all factory state on disk and every agent session fresh, so that nothing depends on chat history or context compaction.</li><li>As a workflow maintainer, I want the factory implemented with the standard library only and covered by the existing CLI-subprocess test style, so that it matches the rest of the package.</li><li>As a workflow maintainer, I want the factory&#x27;s Orca calls isolated behind one small adapter, so that an Orca CLI change touches one place.</li></ol></details>
+
+<h2>Out of scope</h2>
+<p class="sub">Remote/VM compute · GitHub/GitLab ticket source · auto-merge to main, deploys, CI shepherd · intake/QA agents, visual diffs, goal tickets · non-Claude workers · more than one feature per factory · automatic STATUS.md or ticket edits · cross-project view and flightdeck.</p>
+</main></body></html>
