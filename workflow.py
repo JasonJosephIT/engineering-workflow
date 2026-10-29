@@ -507,6 +507,17 @@ def hook_cwd(data):
     return "."
 
 
+def factory_worker(project):
+    """(ticket, turns, max_turns) inside a factory ticket worktree, else None.
+    Unreadable factory files fall back to plain Guard, never to allow."""
+    if not (Path(project) / ".engineering-workflow-state" / "factory-ticket.json").is_file(): return None
+    try:
+        import factory
+        return factory.worker(project)
+    except Exception:  # broad on purpose: any failure here means plain Guard
+        return None
+
+
 def default_hook_output(platform, event):
     if platform == "agy":
         if event == "PreToolUse": return {"decision": "ask"}
@@ -554,18 +565,30 @@ def hook(platform, data, event=None):
         inp = (tc.get("args") if isinstance(tc.get("args"), dict) else None) or data.get("tool_input") or {}
         tool = tc.get("name") or data.get("tool_name", "")
         command = inp.get("command", inp.get("cmd", inp.get("CommandLine", "")))
-        if tool in ("Bash", "exec_command", "shell_command", "run_shell_command", "run_command") and isinstance(command, str):
+        worker = factory_worker(project)
+        decision, reason = None, "Claude Guard requires local review of this command; command text withheld."
+        if worker and worker[1] >= worker[2]:
+            decision, reason = "deny", f"Factory turn cap reached; run factory report {worker[0]} blocked"
+        elif tool in ("Bash", "exec_command", "shell_command", "run_shell_command", "run_command") and isinstance(command, str):
             decision = guard_command(command, runtime)
-            if decision in ("deny", "ask"):
-                reason = "Claude Guard requires local review of this command; command text withheld."
-                if platform in ("gemini", "agy"): return {"decision": "deny", "reason": reason}
-                return {"hookSpecificOutput": {"hookEventName": event,
-                    "permissionDecision": decision, "permissionDecisionReason": reason}}
+            if decision == "ask" and worker:  # nobody watches a factory worker, so a prompt would wait forever
+                import factory
+                try: factory.flag_permission(project)
+                except (OSError, ValueError): pass  # still deny; tick's caps catch a bad counters file
+                decision = "deny"
+        if decision in ("deny", "ask"):
+            if platform in ("gemini", "agy"): return {"decision": "deny", "reason": reason}
+            return {"hookSpecificOutput": {"hookEventName": event,
+                "permissionDecision": decision, "permissionDecisionReason": reason}}
         return default_hook_output(platform, event)
     if event in ("PostToolUse", "AfterTool", "PostInvocation"):
         tc = data.get("toolCall") if isinstance(data.get("toolCall"), dict) else {}
         inp = (tc.get("args") if isinstance(tc.get("args"), dict) else None) or data.get("tool_input") or {}
         message = credential_check(project, inp, runtime)
+        if factory_worker(project):
+            import factory
+            try: factory.count_turn(project)
+            except (OSError, ValueError): pass  # a bad counters file already caps the worker; keep the warning
         if message: return context_output(platform, event, message)
     if event in ("Stop", "AfterAgent"):
         # Subagents must not drive the controller's standing-goal loop.
