@@ -16,8 +16,8 @@ main is untouched (12c0318). Not pushed, not merged to main. Build log:
 
 ## Next
 
-1. Decide how to land `build/factory-mode` (merge to main locally, PR, or keep).
-2. Decide the turn-cap message (see Open items), then tag/release v0.3.0.
+1. Review and merge the `build/factory-mode` PR, then tag/release v0.3.0.
+2. (in progress) Turn-cap report exception, then push + PR.
 3. Remove the `orca-spike` repo entry in Orca's UI (left by the spike; no CLI for it).
 4. First real factory run on a small feature to confirm the unverified Orca facts.
 5. Skill routing: spec written (`.scratch/skill-routing/spec.md`); next
@@ -25,6 +25,11 @@ main is untouched (12c0318). Not pushed, not merged to main. Build log:
 
 ## Decisions
 
+- 2026-10-29: At the turn cap the hook lets exactly one command through: the worker's
+  own `workflow.py factory report <NN> blocked` (no shell operators), so a capped ticket
+  lands in needs-you with the worker's reason; every other tool call stays refused.
+  `build/factory-mode` lands by push + PR against main (your choice); nothing merges
+  to main until you approve the PR.
 - 2026-10-29: Final-review fixes for factory mode: tick and approve gate with the
   integration branch's `gates.sh`, never the ticket's; a ticket that changes workflow
   control files (`.engineering-workflow/`, `.claude/`, `CLAUDE.md`, `AGENTS.md`, the
@@ -177,9 +182,6 @@ main is untouched (12c0318). Not pushed, not merged to main. Build log:
 
 ## Open items / waiting on
 
-- Your call: a worker at its turn cap is told "run factory report <NN> blocked", but
-  the same hook refuses every tool call, including that one (spec text kept). Either
-  let exactly that report command through, or reword the message.
 - Unverified on real Orca: `terminal read` output shape (bypass check now fails
   closed if it can't read), and that `terminal show` reports `connected: false` only
   for dead workers.
