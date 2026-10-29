@@ -22,7 +22,6 @@ GATES = Path(".engineering-workflow") / "gates.sh"
 PROTECTED = ("main", "master")
 BYPASS_REASON = ("Orca launched in bypass mode; remove it from Orca's Claude arguments "
                  "or reinstall with --allow-bypass")
-HOLD_REASON = "high blast radius: waiting for approval"
 BYPASS_WORDS = ("dangerously-skip-permissions", "bypass permissions", "bypasspermissions")
 LEFTOVER = "claim branch exists without a ledger entry"
 REQUEUABLE = ("needs-you", "capped", "interrupted")
@@ -37,8 +36,7 @@ CONTROL_FILES = {"CLAUDE.md", "AGENTS.md", "GEMINI.md", ".gitignore", ".gitattri
 
 def now(): return datetime.now(timezone.utc).isoformat()
 def save(path, value): write_atomic(path, encoded(value))
-def command(*argv): return " ".join(shlex.quote(str(a)) for a in argv)
-def workflow_command(*args): return command(sys.executable, ROOT / "workflow.py", "factory", *args)
+def workflow_command(*args): return shlex.join(map(str, (sys.executable, ROOT / "workflow.py", "factory", *args)))
 
 
 # --- Orca adapter: the only code that calls the orca CLI -------------------------
@@ -63,12 +61,6 @@ def orca(*args, check=True):
         detail = error.get("message") or error.get("code") if isinstance(error, dict) else error
         raise ValueError(f"orca {' '.join(args[:2])} failed: {detail or result.stderr.strip() or 'no detail'}")
     return data.get("result") or {}
-
-
-def repo_registered(checkout):
-    try: orca("repo", "show", "--repo", f"path:{checkout}")
-    except ValueError: return False
-    return True
 
 
 def set_card(worktree, status, comment=None):
@@ -215,9 +207,7 @@ def ready_tickets(state, ledger):
     def fresh(ticket):
         return ticket["status"] == "ready-for-agent" and all(merged(b) for b in ticket["blocked_by"])
 
-    def requeued(ticket): return ledger[ticket["id"]]["state"] == "ready"
-
-    return [t for t in found if (requeued(t) if t["id"] in ledger else fresh(t))]
+    return [t for t in found if (ledger[t["id"]]["state"] == "ready" if t["id"] in ledger else fresh(t))]
 
 
 def move(entry, new_state, reason=None):
@@ -249,7 +239,7 @@ def tick_lock(directory):
     if not (directory / "state.json").is_file(): raise ValueError("No factory installed for this project")
     with open(directory / "tick.lock", "a") as handle:
         fcntl.flock(handle, fcntl.LOCK_EX)
-        yield
+        yield load(directory)  # (state, ledger), read under the lock
 
 
 # --- Gate -------------------------------------------------------------------------
@@ -376,15 +366,13 @@ def land(state, ticket, entry, out, hold=None):
     return True
 
 
-def blast_radius(state, ticket):
-    checkout = integration_checkout(state)  # ticket files are only trustworthy on the integration branch
-    return next((t["radius"] for t in tickets(checkout, state["feature"]) if t["id"] == ticket), "high")
-
-
 def merge_approved(state, ledger, out):
     for ticket, entry in ledger.items():
         if entry["state"] == "approved":
-            hold = control_files(state, entry) or (HOLD_REASON if blast_radius(state, ticket) == "high" else None)
+            # ticket files are only trustworthy on the integration branch
+            radius = next((t["radius"] for t in tickets(integration_checkout(state), state["feature"])
+                           if t["id"] == ticket), "high")
+            hold = control_files(state, entry) or ("high blast radius: waiting for approval" if radius == "high" else None)
             land(state, ticket, entry, out, hold)
 
 
@@ -394,11 +382,6 @@ def worker_brief(state, ticket, worktree):
             f"Gate: {workflow_command('gate', '--ticket', ticket['id'], '--project', worktree)}. "
             f"Report: {workflow_command('report', ticket['id'], 'approved', '--detach', '--project', worktree)}"
             f' --slowed-by "<one line>" (blocked instead of approved, plus --reason "<one line>", if stuck).')
-
-
-def final_review_brief(state):
-    return (f"Use the ew-factory skill (final review brief) for {state['feature']} on {state['integration_branch']}; "
-            f"write findings to {Path(state['state_dir']) / 'final-review.md'}.")
 
 
 def branch_name(state, ticket): return f"factory/{state['feature']}-{ticket}"
@@ -602,7 +585,9 @@ def final_review(state, ledger, out):
     """One review agent in the integration checkout once the feature is done, then pause."""
     if not review_due(state, ledger): return
     try:
-        handle = launch_worker(state["integration_checkout"], final_review_brief(state))
+        handle = launch_worker(state["integration_checkout"],
+                               f"Use the ew-factory skill (final review brief) for {state['feature']} on "
+                               f"{state['integration_branch']}; write findings to {Path(state['state_dir']) / 'final-review.md'}.")
     except ValueError as error:  # no retry every hour: the person resumes once Orca is fixed
         out.append(f"final review launch failed: {error}")
     else:
@@ -628,8 +613,7 @@ def update_mode(state, ledger, out):
 
 
 def tick(directory):
-    with tick_lock(directory):
-        state, ledger = load(directory)
+    with tick_lock(directory) as (state, ledger):
         out = []
         try:
             reconcile(state, ledger, out)
@@ -662,7 +646,8 @@ def install(args):
     if not (checkout / GATES).is_file():
         raise ValueError(f"No gate script at {GATES}. Save and commit this starter, then install again:\n"
                          f"{starter_gate(checkout)}")
-    if not repo_registered(checkout): raise ValueError("This repo is not registered in Orca")
+    try: orca("repo", "show", "--repo", f"path:{checkout}")
+    except ValueError: raise ValueError("This repo is not registered in Orca") from None
     if git("check-ignore", "-q", STATE + "/", cwd=checkout) is None:
         exclude = (checkout / git("rev-parse", "--git-common-dir", cwd=checkout)).resolve() / "info" / "exclude"
         exclude.parent.mkdir(exist_ok=True)
@@ -680,8 +665,7 @@ def install(args):
 def uninstall(args):
     """Stop the workers, remove the heartbeat, keep the ledger under a dated name; worktrees and branches stay."""
     directory = state_dir(args.project)
-    with tick_lock(directory):
-        state, ledger = load(directory)
+    with tick_lock(directory) as (state, ledger):
         out = []
         stop_all(ledger, out, "stopped by uninstall")
         update_cards(ledger, out)
@@ -738,8 +722,7 @@ def gate(args):
     passed, output, waited, ran = queued_gate(directory, find_project(args.project))
     print(output, end="")
     if ticket:
-        with tick_lock(directory):  # short: the gate itself ran outside the lock
-            state, ledger = load(directory)
+        with tick_lock(directory) as (state, ledger):  # short: the gate itself ran outside the lock
             if ticket in ledger:
                 record_gate(ledger[ticket], waited, ran)
                 save(directory / "ledger.json", ledger)
@@ -749,8 +732,7 @@ def gate(args):
 def report(args):
     if args.result not in ("approved", "blocked"): raise ValueError("report needs <ticket> approved|blocked")
     directory = state_dir(args.project)
-    with tick_lock(directory):
-        state, ledger = load(directory)
+    with tick_lock(directory) as (state, ledger):
         entry = ledger.get(args.ticket)
         if not entry or entry["state"] != "working": raise ValueError(f"Ticket {args.ticket} is not working")
         entry["slowed_by"] = args.slowed_by
@@ -770,8 +752,7 @@ def spawn_tick(directory):
 
 def approve(args):
     directory = state_dir(args.project)
-    with tick_lock(directory):
-        state, ledger = load(directory)
+    with tick_lock(directory) as (state, ledger):
         entry = ledger.get(args.ticket)
         if not entry or entry["state"] != "needs-you":
             raise ValueError(f"Ticket {args.ticket} is not waiting for you")
@@ -789,8 +770,7 @@ def approve(args):
 
 def requeue(args):
     directory = state_dir(args.project)
-    with tick_lock(directory):
-        _, ledger = load(directory)
+    with tick_lock(directory) as (_, ledger):
         entry = ledger.get(args.ticket)
         if not entry or entry["state"] not in REQUEUABLE:
             raise ValueError(f"Ticket {args.ticket} cannot be requeued (only {', '.join(REQUEUABLE)})")
@@ -812,16 +792,14 @@ def set_setting(args):
     if name not in SETTINGS: raise ValueError(f"set needs one of: {', '.join(SETTINGS)}")
     if not re.fullmatch(r"[1-9][0-9]*", value or ""): raise ValueError(f"{name} needs a positive integer")
     directory = state_dir(args.project)
-    with tick_lock(directory):
-        state, _ = load(directory)
+    with tick_lock(directory) as (state, _):
         state[name] = int(value)
         save(directory / "state.json", state)
     print(f"{name} = {value}")
 
 
 def set_mode(directory, mode):
-    with tick_lock(directory):
-        state, ledger = load(directory)
+    with tick_lock(directory) as (state, ledger):
         if mode == "draining" and not in_flight(ledger): mode = "paused"
         if mode in ("once", "running"):  # running's wave is every ticket, so its list is empty
             state["wave"] = [t["id"] for t in ready_tickets(state, ledger)] if mode == "once" else []
@@ -836,8 +814,7 @@ def pause(args):
     if not args.now:
         print(f"factory {set_mode(directory, 'draining')}")
         return
-    with tick_lock(directory):
-        state, ledger = load(directory)
+    with tick_lock(directory) as (state, ledger):
         out = []
         stop_all(ledger, out, "stopped by pause --now")
         update_cards(ledger, out)
@@ -857,14 +834,11 @@ def stop_all(ledger, out, reason):
         out.append(f"interrupted {ticket}; {entry['branch']} and its worktree are kept")
 
 
-def resume(args):
-    set_mode(state_dir(args.project), "running")
-    tick(state_dir(args.project))
-
-
-def cycle(args):
-    set_mode(state_dir(args.project), "once")
-    tick(state_dir(args.project))  # a manual Orca automation run ignores the precheck, so tick directly
+def go(args, mode):
+    """resume (running) or cycle (once); a manual Orca automation run ignores the precheck, so tick directly."""
+    directory = state_dir(args.project)
+    set_mode(directory, mode)
+    tick(directory)
 
 
 def add_parser(sub):
@@ -890,6 +864,6 @@ def run(args):
     actions = {"install": install, "uninstall": uninstall, "status": status, "set": set_setting, "gate": gate,
                "report": report, "precheck": precheck,
                "tick": lambda a: (spawn_tick if a.detach else tick)(state_dir(a.project)),
-               "pause": pause, "resume": resume, "cycle": cycle,
+               "pause": pause, "resume": lambda a: go(a, "running"), "cycle": lambda a: go(a, "once"),
                "approve": approve, "requeue": requeue}
     return actions[args.action](args) or 0

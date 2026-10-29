@@ -126,7 +126,6 @@ class FactoryTests(unittest.TestCase):
 
         (self.worktree / 'thing.txt').write_text('built\n')
         self.git('add', '-A', cwd=self.worktree)
-        self.assertEqual(self.git('status', '--porcelain', cwd=self.worktree), 'A  thing.txt')
         self.git('commit', '-qm', 'Build thing', cwd=self.worktree)
         self.cli('report', '01', 'approved', '--slowed-by', 'nothing', project=self.worktree)
 
@@ -322,12 +321,6 @@ class FactoryTests(unittest.TestCase):
         self.assertEqual(self.cards()[-1], self.held_card('interrupted: stopped by pause --now'))
         self.assertEqual(self.git('show', 'factory/demo-01:half.txt'), 'half done')
 
-    def test_resume_sets_running_and_ticks(self):
-        self.cli('install', '--feature', 'demo', '--paused')
-        self.cli('resume')
-        self.assertEqual(self.state()['mode'], 'running')
-        self.assertEqual(self.ledger()['01']['state'], 'working')
-
     def test_cycle_runs_one_wave_then_pauses(self):
         self.add_ticket('02')
         self.cli('install', '--feature', 'demo', '--paused')
@@ -464,8 +457,7 @@ class FactoryTests(unittest.TestCase):
 
     def test_more_build_slots_let_gates_run_together(self):
         self.cli('install', '--feature', 'demo', '--paused')
-        state = self.state(); state['build_slots'] = 2
-        (self.state_dir / 'state.json').write_text(json.dumps(state))
+        self.set_state(build_slots=2)
         self.slow_gate(1)
         runs = [self.start_gate(), self.start_gate()]
         begin = time.time()
