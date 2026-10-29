@@ -287,32 +287,41 @@ class FactoryTests(unittest.TestCase):
     def cards(self):
         return [c[3:] for c in self.orca_calls() if c[:2] == ['worktree', 'set']]
 
-    def held_card(self, reason):
-        return [f'path:{self.worktree}', '--workspace-status', 'in-review', '--comment', f'NEEDS YOU: {reason}',
-                '--unread', '--json']
+    def held_card(self, reason, worktree=None):
+        return [f'path:{worktree or self.worktree}', '--workspace-status', 'in-review',
+                '--comment', f'NEEDS YOU: {reason}', '--unread', '--json']
 
-    def test_high_or_missing_blast_radius_passes_gate_then_waits_for_approve(self):
-        for line in ('**Blast radius:** high\n', '', 'Blast radius: huge\n'):
-            with self.subTest(line=line):
-                self.tmp.cleanup(); self.setUp()  # a fresh repo per radius
-                self.set_radius(line)
-                self.cli('install', '--feature', 'demo'); self.cli('tick'); self.build()
-                before = self.git('rev-parse', 'build/demo')
-                self.approve()
-                entry = self.ledger()['01']
-                self.assertEqual((entry['state'], entry['reason']),
-                                 ('needs-you', 'high blast radius: waiting for approval'))
-                self.assertEqual(self.git('rev-parse', 'build/demo'), before)
-                self.assertEqual(self.cards()[-1], self.held_card('high blast radius: waiting for approval'))
-                self.assertIn('merged 01 into build/demo', self.cli('approve', '01').stdout)
-                entry = self.ledger()['01']
-                self.assertEqual([h['state'] for h in entry['history']],
-                                 ['working', 'approved', 'needs-you', 'merged'])
-                self.assertEqual(len(self.git('rev-list', '--parents', '-n', '1', 'build/demo').split()), 3)
-                self.assertEqual(self.git('show', 'build/demo:thing.txt'), 'built')
-                self.assertFalse(self.worktree.exists())
-                self.assertEqual(self.cards()[-1],
-                                 [f'path:{self.worktree}', '--workspace-status', 'completed', '--json'])
+    def last_card(self, worktree):
+        return [c for c in self.cards() if c[0] == f'path:{worktree}'][-1]
+
+    def test_high_missing_or_unknown_blast_radius_passes_gate_then_waits_for_approve(self):
+        issues = self.project / '.scratch' / 'demo' / 'issues'
+        radius = '**Blast radius:** low\n'
+        (issues / '01-thing.md').write_text(TICKET.replace(radius, '**Blast radius:** high\n'))
+        (issues / '02-other.md').write_text(TICKET.replace('01: Thing', '02: Other').replace(radius, ''))
+        odd = TICKET.replace('01: Thing', '03: Odd').replace(radius, 'Blast radius: huge\n')
+        (issues / '03-odd.md').write_text(odd)
+        self.git('add', '-A'); self.git('commit', '-qm', 'radius tickets')
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        before = self.git('rev-parse', 'build/demo')
+        hold = 'high blast radius: waiting for approval'
+        worktrees = {n: self.state_dir / 'worktrees' / f'demo-{n}' for n in ('01', '02', '03')}
+        for n, worktree in worktrees.items():  # each report's tick holds this ticket and starts the next
+            (worktree / f'{n}.txt').write_text('built\n')
+            self.git('add', '-A', cwd=worktree); self.git('commit', '-qm', f'Build {n}', cwd=worktree)
+            self.cli('report', n, 'approved', '--slowed-by', 'nothing', project=worktree)
+            self.assertEqual((self.ledger()[n]['state'], self.ledger()[n]['reason']), ('needs-you', hold))
+            self.assertEqual(self.last_card(worktree), self.held_card(hold, worktree))
+        self.assertEqual(self.git('rev-parse', 'build/demo'), before)
+        for n, worktree in worktrees.items():
+            self.assertIn(f'merged {n} into build/demo', self.cli('approve', n).stdout)
+            self.assertEqual([h['state'] for h in self.ledger()[n]['history']],
+                             ['working', 'approved', 'needs-you', 'merged'])
+            self.assertEqual(len(self.git('rev-list', '--parents', '-n', '1', 'build/demo').split()), 3)
+            self.assertEqual(self.git('show', f'build/demo:{n}.txt'), 'built')
+            self.assertFalse(worktree.exists())
+            self.assertEqual(self.last_card(worktree),
+                             [f'path:{worktree}', '--workspace-status', 'completed', '--json'])
 
     def test_cards_show_in_progress_then_needs_you_and_medium_merges_automatically(self):
         self.set_radius('**Blast radius:** medium\n')
@@ -341,6 +350,32 @@ class FactoryTests(unittest.TestCase):
         self.cli('report', '01', 'blocked', '--reason', 'needs an API decision', '--slowed-by', 'spec',
                  project=self.worktree)
         self.assertEqual(self.cards()[-1], self.held_card('needs an API decision'))
+
+    def test_approve_refuses_tickets_their_worker_did_not_approve(self):
+        second = self.project / '.scratch' / 'demo' / 'issues' / '02-other.md'
+        second.write_text(TICKET.replace('01: Thing', '02: Other'))
+        self.git('add', '-A'); self.git('commit', '-qm', 'second ticket')
+        self.cli('install', '--feature', 'demo')
+        before = self.git('rev-parse', 'build/demo')
+        (self.orca_dir / 'launch-fails').touch(); self.cli('tick'); (self.orca_dir / 'launch-fails').unlink()
+        self.cli('tick')
+        self.cli('report', '02', 'blocked', '--reason', 'needs an API decision', '--slowed-by', 'spec',
+                 project=self.state_dir / 'worktrees' / 'demo-02')
+        for n in ('01', '02'):
+            refused = self.cli('approve', n, ok=False).stderr
+            self.assertIn(f'Ticket {n} was not approved by its worker; requeue it instead', refused)
+            self.assertEqual(self.ledger()[n]['state'], 'needs-you')
+        self.assertEqual(self.git('rev-parse', 'build/demo'), before)
+
+    def test_merged_ticket_whose_card_failed_is_not_retried_after_its_worktree_is_gone(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick'); self.build()
+        (self.orca_dir / 'card-fails').touch()
+        self.assertIn('card for 01 not updated', self.approve().stdout)
+        self.assertEqual(self.ledger()['01']['state'], 'merged')
+        (self.orca_dir / 'card-fails').unlink()
+        calls = len(self.cards())
+        self.assertNotIn('not updated', self.cli('tick').stdout)
+        self.assertEqual(len(self.cards()), calls)
 
     def test_failed_card_update_does_not_abort_the_tick_and_is_retried(self):
         self.cli('install', '--feature', 'demo')
@@ -381,7 +416,7 @@ class FactoryTests(unittest.TestCase):
         self.cli('requeue', '01')
         self.assertEqual(self.ledger()['01']['state'], 'ready')
         self.assertIn('01 ready factory/demo-01', self.cli('status').stdout)
-        self.cli('tick')
+        relaunched = self.cli('tick')
         entry = self.ledger()['01']
         self.assertEqual([h['state'] for h in entry['history']], ['working', 'needs-you', 'ready', 'working'])
         self.assertEqual((entry['branch'], entry['worktree'], entry['turns']),
@@ -391,6 +426,8 @@ class FactoryTests(unittest.TestCase):
         self.assertEqual(branches, ['factory/demo-01'])
         launches = [c for c in self.orca_calls() if c[:2] == ['agent', 'launch']]
         self.assertEqual([c[c.index('--worktree') + 1] for c in launches], [f'path:{self.worktree}'] * 2)
+        self.assertNotIn('claimed', relaunched.stdout)
+        self.assertIn('relaunched 01 in its worktree', relaunched.stdout)
         self.assertEqual(self.cards()[-1],
                          [f'path:{self.worktree}', '--workspace-status', 'in-progress', '--json'])
 

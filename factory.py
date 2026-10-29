@@ -142,6 +142,9 @@ def card(ticket, entry, out):
     comment = f"NEEDS YOU: {entry['reason']}" if entry["state"] == "needs-you" else None
     if not status or entry.get("card") == [status, comment]:
         return
+    if not Path(entry["worktree"]).exists():  # Orca's card went with the worktree; never retry
+        entry["card"] = [status, comment]
+        return
     try:
         set_card(entry["worktree"], status, comment)
     except (ValueError, OSError, subprocess.SubprocessError) as error:
@@ -198,25 +201,25 @@ def integration_checkout(state):
     return checkout
 
 
-def merge_ticket(state, ticket, entry, out):
+def merge_ticket(state, entry):
     """Merge into the integration branch; return a needs-you reason, or None when merged."""
     checkout = integration_checkout(state)
     if git("merge", "--no-ff", "--no-edit", entry["branch"], cwd=checkout) is None:
         git("merge", "--abort", cwd=checkout)
         return "merge conflict"
-    move(entry, "merged")
-    card(ticket, entry, out)  # before the worktree, and with it the Orca card, goes away
-    git("worktree", "remove", "--force", entry["worktree"], cwd=checkout)
     return None
 
 
 def land(state, ticket, entry, out, hold=False):
     """Gate, then merge; a failure or a hold leaves the ticket in needs-you. Returns True when merged."""
-    reason = gate_ticket(entry) or (HOLD_REASON if hold else None) or merge_ticket(state, ticket, entry, out)
+    reason = gate_ticket(entry) or (HOLD_REASON if hold else None) or merge_ticket(state, entry)
     if reason:
         move(entry, "needs-you", reason)
         out.append(f"{ticket} needs you: {reason}")
         return False
+    move(entry, "merged")
+    card(ticket, entry, out)  # before the worktree, and with it the Orca card, goes away
+    git("worktree", "remove", "--force", entry["worktree"], cwd=state["integration_checkout"])
     out.append(f"merged {ticket} into {state['integration_branch']}")
     return True
 
@@ -258,7 +261,7 @@ def claim(state, ledger, ticket):
     return entry
 
 
-def launch(state, entry, ticket, out):
+def launch(state, entry, ticket, out, started=None):
     """Launch the worker; park the ticket on launch failure or an unallowed bypass launch."""
     try:
         entry["worker_handle"] = launch_worker(entry["worktree"], worker_brief(state, ticket, entry["worktree"]))
@@ -266,7 +269,7 @@ def launch(state, entry, ticket, out):
         move(entry, "needs-you", f"worker launch failed: {error}")
         out.append(f"{ticket['id']} needs you: worker launch failed")
         return
-    out.append(f"claimed {ticket['id']} on {entry['branch']}")
+    out.append(started or f"claimed {ticket['id']} on {entry['branch']}")
     if state["allow_bypass"] or not worker_in_bypass(entry["worker_handle"]):
         return
     stopped = stop_worker(entry["worker_handle"])
@@ -281,7 +284,7 @@ def relaunch(state, entry, ticket, out):
     """Start a fresh worker for a requeued ticket in its existing branch and worktree."""
     entry.update(started_at=now(), turns=0, queue_wait_seconds=0)  # caps count this run only
     move(entry, "working")
-    launch(state, entry, ticket, out)
+    launch(state, entry, ticket, out, started=f"relaunched {ticket['id']} in its worktree")
 
 
 def requeued_tickets(state, ledger):
@@ -391,6 +394,8 @@ def approve(args):
         entry = ledger.get(args.ticket)
         if not entry or entry["state"] != "needs-you":
             raise ValueError(f"Ticket {args.ticket} is not waiting for you")
+        if next(s["state"] for s in reversed(entry["history"]) if s["state"] != "needs-you") != "approved":
+            raise ValueError(f"Ticket {args.ticket} was not approved by its worker; requeue it instead")
         out = []
         try:
             merged = land(state, args.ticket, entry, out)

@@ -37,7 +37,7 @@
     "adapters/gemini.md": "151cd43297b5c1ff784e2975fc96ba516d68439171191607dea83941b4349b92",
     "core/REVIEW_CONTRACT.md": "298ba415ea78f5d8e9ce0ee3e4ce26b2f17cddc1e6f07b6d2d5384e22e2cec47",
     "core/WORKFLOW.md": "5779f9099e7f9a76f5a49b6587aa238069b53c9171a9ab10874d32eaad5dea72",
-    "factory.py": "1f01ef81536d9d89e18f47d24832ae21311becaae036a33eceb970cef9c5e742",
+    "factory.py": "6ef8c0fefc0b8f04137a7251f7a619b80ea05704b52c8c1945eb58d9b01abbf4",
     "reviews.py": "8c14cdfea96555862ca413fc9d2ecd4b84e6b9a00e99b78c68934e32ef31ea95",
     "skills/autopilot/SKILL.md": "48e03cfbaa4d01fa058f7f21db12ccf239ddaad3b1ed1c04b45b4808320da8cb",
     "skills/deploy-checklist/SKILL.md": "ec7a1df34b92b25c0df89e2d0f16b9f87d36c342a6488612d5ebb4156c00a13d",
