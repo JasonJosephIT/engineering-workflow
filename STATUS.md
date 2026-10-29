@@ -10,7 +10,7 @@ updated: 2026-10-29
 ## Now
 
 Factory mode (v0.3.0) build is running on `build/factory-mode` with
-`ew-subagent-driven-development`: all tickets 01-10 merged (v0.3.0, 115 tests, `verify --expected 0.3.0` green); final whole-branch review (code, ponytail, security) running, then one fix pass. The build log is at
+`ew-subagent-driven-development`: all tickets 01-10 merged (v0.3.0, 115 tests, `verify --expected 0.3.0` green); final review found 2+1 Critical issues (a worker's own gate script gates its merge; a reused ledger after uninstall; a forged project pin inside a worker's worktree can switch off Guard) plus hangs and fail-open paths; one fix pass is running. The build log is at
 `.engineering-workflow-state/sdd/factory-mode/progress.md`. Skill routing (v0.4.0) has
 a spec (`.scratch/skill-routing/spec.md`) but no tickets yet.
 
@@ -24,6 +24,15 @@ a spec (`.scratch/skill-routing/spec.md`) but no tickets yet.
 
 ## Decisions
 
+- 2026-10-29: Final-review fixes for factory mode: tick and approve gate with the
+  integration branch's `gates.sh`, never the ticket's; a ticket that changes workflow
+  control files (`.engineering-workflow/`, `.claude/`, `CLAUDE.md`, `AGENTS.md`, the
+  feature's tickets, ...) is held for approval; hooks inside factory worktrees never
+  yield to a project pin found there and fail closed instead of hanging; person-only
+  commands are refused from ticket worktrees; uninstall stops workers and archives the
+  ledger; `precheck` wakes tick whenever a ticket is working, even when paused, so caps
+  keep running; `report`/heartbeat ticks run detached so a Bash timeout can't kill a
+  merge. README states that Guard is not a sandbox in bypass mode.
 - 2026-10-29: The factory's final review runs only when the whole feature is done:
   nothing ready, working or approved, and nothing waiting on you (needs-you, capped,
   interrupted). Until then a running factory idles at no cost; `precheck` wakes it
