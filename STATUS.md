@@ -18,15 +18,21 @@ Both designs are merged to main. Factory spec and 10 tickets: `.scratch/factory-
 
 ## Next
 
-1. Ticket 01 (manual, ready-for-human): the Orca spike on this host. Record findings
-   in `.scratch/factory-mode/issues/01-orca-spike.md` under `## Comments`.
-2. Build tickets 02-10 with `ew-subagent-driven-development` (02 first; then 03, 04,
+1. Remove the `orca-spike` repo entry in Orca's UI (left by the spike; no CLI for it).
+2. Build tickets 02-10 on `build/factory-mode` with `ew-subagent-driven-development` (02 first; then 03, 04,
    05, 06 in parallel; 07 after 05+06; 08 after 04+07; 09 after 05; 10 last).
 3. Skill routing: spec written (`.scratch/skill-routing/spec.md`); next
    `/ew-matt-to-tickets` for it.
 
 ## Decisions
 
+- 2026-10-29: Orca spike done (ticket 01): Orca launches Claude with
+  `--dangerously-skip-permissions` by default and the factory can't change that.
+  Bypass becomes an opt-in: `factory install --allow-bypass`. Without it, `tick`
+  detects a bypass-launched worker, stops it, sends the ticket to needs-you and pauses.
+  In ticket worktrees, Guard `ask` becomes `deny` + needs-you ("permission needed")
+  so no worker waits on a prompt. Heartbeat uses `--model sonnet` (haiku hit an API
+  400). Spec, tickets 02 and 07 updated.
 - 2026-10-29: `factory set` is back in the factory spec and ticket 08 (overrides the
   ponytail cut below): it changes concurrency, build slots, caps and the pile limit,
   rejecting unknown settings and invalid values. The other three cuts stand.
