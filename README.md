@@ -1,6 +1,6 @@
 # Engineering workflow
 
-One versioned process for Claude Code, Codex, Gemini CLI and Antigravity. Version **0.2.2**.
+One versioned process for Claude Code, Codex, Gemini CLI and Antigravity. Version **0.3.0**.
 Matt Pocock planning/TDD/review + personal SDD + Ponytail, with Claude Guard,
 portable Autopilot and docs-health. Optional Headroom startup support. No Runpod,
 entertainment, or required TypeSafe dependency.
@@ -11,9 +11,9 @@ Requires Git, Python **3.11+**, and access to this private repository. Clone a
 release, verify it, explicitly select the platform, then install:
 
 ```sh
-git clone --branch v0.2.2 https://github.com/JasonJosephIT/engineering-workflow.git
+git clone --branch v0.3.0 https://github.com/JasonJosephIT/engineering-workflow.git
 cd engineering-workflow
-python3 -B workflow.py verify --expected 0.2.2
+python3 -B workflow.py verify --expected 0.3.0
 python3 -B workflow.py install --scope user --platform codex --dry-run
 python3 -B workflow.py install --scope user --platform codex
 ```
@@ -92,6 +92,31 @@ repository and rerun install. No startup pull or silent upstream skill updates.
 `ew-workflow-update` does those steps on request: tests, install with the recorded
 flags, verify; for the user install or, with `--project`, a project's pin.
 User defaults may advance while projects retain their committed older pins.
+
+## Factory mode (opt-in, Orca)
+
+After `/to-tickets` is approved, an Orca-hosted loop builds the ready tickets in
+parallel into an integration branch. `workflow.py factory tick` owns the
+sequencing, caps, merges and modes. The factory never merges or pushes to
+main, deploys, or publishes issues. A ticket that needs you shows on its Orca
+card.
+
+Needs the Orca CLI, the repo registered in Orca, an integration branch that is
+not main/master, and a committed `.engineering-workflow/gates.sh` whose last
+line is `GATES: PASS`.
+
+Defaults: concurrency 3, build_slots 1, daily_ticket_cap 10, stop_if_waiting 5,
+max_turns 100, max_minutes 90. The heartbeat runs hourly on `--model sonnet`.
+Orca launches Claude in bypass mode by default, so the factory refuses to keep
+such a worker unless installed with `--allow-bypass`.
+
+```sh
+python3 -B workflow.py factory install --feature NAME [--paused] [--allow-bypass]
+python3 -B workflow.py factory status | set SETTING VALUE | pause [--now] | resume
+python3 -B workflow.py factory cycle | approve TICKET | requeue TICKET | uninstall
+```
+
+`tick`, `precheck`, `gate` and `report` are run by the heartbeat and the workers.
 
 ## Project discovery and implementation reviews
 
