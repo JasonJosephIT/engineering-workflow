@@ -1,20 +1,18 @@
 ---
 status: active
-progress: 35
-next_date: 2026-10-28
-updated: 2026-10-28
+progress: 40
+next_date: 2026-10-29
+updated: 2026-10-29
 ---
 
 # STATUS
 
 ## Now
 
-Designing factory mode (v0.3.0): an opt-in, Orca-hosted loop that keeps building
-approved tickets in parallel after `/to-tickets`, with install / pause (drain or stop)
-/ resume / one-cycle controls. Design draft: `docs/factory-mode.md` (+ `.html`).
-Skill routing, add-ons and the `ew-flightdeck` dashboard are designed to ship right
-after it (`docs/skill-routing.md`). `docs/ew-map.svg` shows how both fit the workflow.
-Both designs are merged to main. Factory spec and 10 tickets: `.scratch/factory-mode/`. Nothing built yet.
+Factory mode (v0.3.0) build has started on `build/factory-mode`: ticket 01 (Orca spike)
+is done and recorded; tickets 02-10 are next. The build log is at
+`.engineering-workflow-state/sdd/factory-mode/progress.md`. Skill routing (v0.4.0) has
+a spec (`.scratch/skill-routing/spec.md`) but no tickets yet.
 
 ## Next
 
