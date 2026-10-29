@@ -523,16 +523,20 @@ def factory_worker(project):
 SHELL_TOOLS = ("Bash", "exec_command", "shell_command", "run_shell_command", "run_command")
 
 
-def own_blocked_report(command, ticket):
-    """True only for `<sys.executable> <ROOT>/workflow.py factory report <ticket> blocked` (factory.workflow_command)
-    plus --reason X, --slowed-by X, --project X, --detach, each at most once: what a capped worker may still run."""
+def own_blocked_report(inp, ticket, project):
+    """True only for the exact `factory.workflow_command("report", ticket, "blocked", ...)` string, with
+    --reason X, --slowed-by X, --project <this worktree>, --detach, each at most once: what a capped worker may run."""
+    commands = [inp[k] for k in ("command", "cmd", "CommandLine") if k in inp]
+    if len(commands) != 1 or not isinstance(commands[0], str): return False
+    command, home = commands[0], os.path.normpath(str(project))
+    if any(not isinstance(inp[k], str) or os.path.normpath(inp[k]) != home for k in ("workdir", "cwd") if k in inp):
+        return False
     if any(c in command for c in ";&|`$<>()\n\r\\"): return False
     try: words = shlex.split(command)
     except ValueError: return False
-    if len(words) < 6 or words[2:6] != ["factory", "report", ticket, "blocked"]: return False
-    # Absolute and exact, so nothing the worker planted (a python3, a workflow.py) can stand in.
-    exact = lambda word, real: os.path.isabs(word) and os.path.realpath(word) == os.path.realpath(real)
-    if not (exact(words[0], sys.executable) and exact(words[1], ROOT / "workflow.py")): return False
+    # Exact strings, canonical quoting: no planted interpreter or workflow.py, no glob/brace/tilde/whitespace tricks.
+    if shlex.join(words) != command: return False
+    if words[:6] != [sys.executable, str(ROOT / "workflow.py"), "factory", "report", ticket, "blocked"]: return False
     seen, rest = set(), words[6:]
     while rest:
         flag = rest.pop(0)
@@ -540,7 +544,8 @@ def own_blocked_report(command, ticket):
         seen.add(flag)
         if flag != "--detach":
             if not rest: return False
-            rest.pop(0)
+            value = rest.pop(0)
+            if flag == "--project" and os.path.normpath(value) != home: return False  # another ledger, another tick
     return True
 
 
@@ -598,7 +603,7 @@ def hook(platform, data, event=None):
         if ticket_tree and not worker:
             decision, reason = "deny", "Factory state unreadable; tool call refused"
         elif worker and worker[1] >= worker[2] and not (
-                tool in SHELL_TOOLS and isinstance(command, str) and own_blocked_report(command, worker[0])):
+                tool in SHELL_TOOLS and own_blocked_report(inp, worker[0], project)):
             decision, reason = "deny", f"Factory turn cap reached; run factory report {worker[0]} blocked"
         elif tool in SHELL_TOOLS and isinstance(command, str):  # the capped report still goes through Guard
             decision = guard_command(command, runtime)
