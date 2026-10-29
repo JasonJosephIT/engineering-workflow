@@ -93,8 +93,11 @@ An hourly Orca heartbeat runs `factory tick`; each ticket gets its own worktree 
 worker following the ew-factory worker brief, and a final review runs when the
 feature is done. The factory merges only into the integration branch; it never
 merges to main, pushes to main, deploys or publishes issues. Tickets that need the
-human show NEEDS YOU on their Orca cards. Use `factory status` for state,
-`factory pause` / `resume` to control it and `factory uninstall` to remove it.
+human show NEEDS YOU on their Orca cards; once `stop_if_waiting` (5) of them are
+needs-you or capped, the factory holds and starts nothing new. Use `factory status`
+for state and the last wave's summary, `factory set <setting> <value>` to change
+concurrency, build slots and caps, `factory pause` / `resume` to control it and
+`factory uninstall` to remove it.
 
 ## Human implementation reviews
 

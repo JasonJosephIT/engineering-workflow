@@ -423,6 +423,12 @@ def session(project, platform, expected=None, check_upstream=False):
         configuration = reviews.read_project(project)
         result["project"] = {"id": configuration["project_id"], "public_facing": configuration["public_facing"],
                              "discovery": reviews.discovery_status(configuration)}
+    import factory
+    try:
+        directory = factory.state_dir(project)
+        if (directory / "state.json").is_file(): result["factory"] = factory.status_line(*factory.load(directory))
+    except Exception:  # broad on purpose: factory state never breaks the session report
+        result["factory"] = "unreadable"
     if check_upstream:
         remote = git("ls-remote", REPOSITORY, "refs/tags/" + lock["release"], cwd=runtime)
         if not remote:
