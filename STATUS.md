@@ -10,7 +10,7 @@ updated: 2026-10-29
 ## Now
 
 Factory mode (v0.3.0) build is running on `build/factory-mode` with
-`ew-subagent-driven-development`: tickets 01, 02, 03 and 06 merged; 04 and 05 finishing review. The build log is at
+`ew-subagent-driven-development`: tickets 01, 02, 03, 05 and 06 merged; 04 integrating; 09 building. The build log is at
 `.engineering-workflow-state/sdd/factory-mode/progress.md`. Skill routing (v0.4.0) has
 a spec (`.scratch/skill-routing/spec.md`) but no tickets yet.
 
@@ -24,6 +24,11 @@ a spec (`.scratch/skill-routing/spec.md`) but no tickets yet.
 
 ## Decisions
 
+- 2026-10-29: The factory's final review writes its findings to
+  `.engineering-workflow-state/factory/final-review.md` (agents writing ledger JSON is
+  fragile); `factory status` points at that file and the integration card gets a
+  `NEEDS YOU: final review ready` comment. `factory uninstall` removes the heartbeat and
+  `state.json` only, keeping the ledger, worktrees and branches.
 - 2026-10-29: `factory approve` merges only a held ticket, one whose worker reported
   approved (held for high blast radius, failed gate re-run, merge conflict or
   uncommitted changes). Blocked, permission-needed, bypass-stopped and launch-failed
