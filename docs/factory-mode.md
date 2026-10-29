@@ -73,8 +73,9 @@ hourly heartbeat is only the backstop.
    --precheck "python3 .engineering-workflow/workflow.py factory precheck"
    --extra-agent-args="--model haiku"
    --prompt "Run: python3 .engineering-workflow/workflow.py factory tick. Report its output. Do nothing else."`
-  The precheck exits 0 only when mode is not `paused` and there is something to do
-  (ready tickets, live workers, or approved tickets to merge). Otherwise Orca records
+  The precheck exits 0 whenever a ticket is working, in any mode (tick still reconciles
+  and caps it, and starts nothing while paused); otherwise only when mode is not `paused`
+  and there is something to do (ready tickets or approved tickets to merge). Otherwise Orca records
   a skipped run and spends nothing. When it does run, the agent is a cheap model that
   only runs one command.
 - New skill `ew-factory`: the one-ticket worker brief. It is SDD for a single ticket:
