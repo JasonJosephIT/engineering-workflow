@@ -24,6 +24,12 @@ a spec (`.scratch/skill-routing/spec.md`) but no tickets yet.
 
 ## Decisions
 
+- 2026-10-29: The factory's final review runs only when the whole feature is done:
+  nothing ready, working or approved, and nothing waiting on you (needs-you, capped,
+  interrupted). Until then a running factory idles at no cost; `precheck` wakes it
+  when the review becomes due (e.g. after the last `factory approve`). This tightens
+  the spec's "nothing ready, working or approved" so a held high-radius ticket is
+  never reviewed before it merges.
 - 2026-10-29: Factory turn counts and the "permission needed" flag live in a small file
   in each ticket worktree (`.engineering-workflow-state/factory-turns.json`), not in
   `ledger.json`, so hooks never wait on the tick lock while a pre-merge gate runs;
