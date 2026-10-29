@@ -33,6 +33,7 @@ elif words.startswith('agent launch'): reply(launch={{'outcome': {{'handle': 'te
 elif words.startswith('terminal read'):
     bypass = (control / 'bypass').exists()
     reply(text='claude --dangerously-skip-permissions' if bypass else 'claude')
+elif words.startswith('worktree set'): reply(ok=not (control / 'card-fails').exists(), worktree={{}})
 elif words.startswith('terminal close'): reply(ok=False)
 elif words.startswith('terminal show'): reply(terminal={{'connected': False, 'exitCause': 'closed'}})
 else: reply(ok=False)
@@ -275,6 +276,123 @@ class FactoryTests(unittest.TestCase):
         self.assertTrue(self.state()['allow_bypass'])
         self.assertEqual((self.ledger()['01']['state'], self.state()['mode']), ('working', 'running'))
         self.assertFalse([c for c in self.orca_calls() if c[:1] == ['terminal']])
+
+
+    # --- ticket 04 ---
+    def set_radius(self, line):
+        ticket = self.project / '.scratch' / 'demo' / 'issues' / '01-thing.md'
+        ticket.write_text(TICKET.replace('**Blast radius:** low\n', line))
+        self.git('commit', '-qam', 'set blast radius')
+
+    def cards(self):
+        return [c[3:] for c in self.orca_calls() if c[:2] == ['worktree', 'set']]
+
+    def held_card(self, reason):
+        return [f'path:{self.worktree}', '--workspace-status', 'in-review', '--comment', f'NEEDS YOU: {reason}',
+                '--unread', '--json']
+
+    def test_high_or_missing_blast_radius_passes_gate_then_waits_for_approve(self):
+        for line in ('**Blast radius:** high\n', '', 'Blast radius: huge\n'):
+            with self.subTest(line=line):
+                self.tmp.cleanup(); self.setUp()  # a fresh repo per radius
+                self.set_radius(line)
+                self.cli('install', '--feature', 'demo'); self.cli('tick'); self.build()
+                before = self.git('rev-parse', 'build/demo')
+                self.approve()
+                entry = self.ledger()['01']
+                self.assertEqual((entry['state'], entry['reason']),
+                                 ('needs-you', 'high blast radius: waiting for approval'))
+                self.assertEqual(self.git('rev-parse', 'build/demo'), before)
+                self.assertEqual(self.cards()[-1], self.held_card('high blast radius: waiting for approval'))
+                self.assertIn('merged 01 into build/demo', self.cli('approve', '01').stdout)
+                entry = self.ledger()['01']
+                self.assertEqual([h['state'] for h in entry['history']],
+                                 ['working', 'approved', 'needs-you', 'merged'])
+                self.assertEqual(len(self.git('rev-list', '--parents', '-n', '1', 'build/demo').split()), 3)
+                self.assertEqual(self.git('show', 'build/demo:thing.txt'), 'built')
+                self.assertFalse(self.worktree.exists())
+                self.assertEqual(self.cards()[-1],
+                                 [f'path:{self.worktree}', '--workspace-status', 'completed', '--json'])
+
+    def test_cards_show_in_progress_then_needs_you_and_medium_merges_automatically(self):
+        self.set_radius('**Blast radius:** medium\n')
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        self.assertEqual(self.cards(), [[f'path:{self.worktree}', '--workspace-status', 'in-progress', '--json']])
+        self.cli('tick')
+        self.assertEqual(len(self.cards()), 1)  # unchanged state: no new card call
+        self.build('README.md', 'ticket side\n')
+        (self.project / 'README.md').write_text('integration side\n')
+        self.git('commit', '-qam', 'Integration change')
+        self.approve()
+        self.assertEqual(self.ledger()['01']['state'], 'needs-you')
+        self.assertEqual(self.cards()[-1], self.held_card('merge conflict'))
+        self.git('merge', '-q', '--no-edit', '-X', 'theirs', 'build/demo', cwd=self.worktree)
+        self.cli('approve', '01')
+        self.assertEqual(self.ledger()['01']['state'], 'merged')
+        self.assertEqual(self.cards()[-1], [f'path:{self.worktree}', '--workspace-status', 'completed', '--json'])
+
+    def test_low_ticket_merges_automatically_with_a_completed_card(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick'); self.build(); self.approve()
+        self.assertEqual(self.ledger()['01']['state'], 'merged')
+        self.assertEqual([c[2] for c in self.cards()], ['in-progress', 'completed'])
+
+    def test_blocked_report_shows_needs_you_card(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        self.cli('report', '01', 'blocked', '--reason', 'needs an API decision', '--slowed-by', 'spec',
+                 project=self.worktree)
+        self.assertEqual(self.cards()[-1], self.held_card('needs an API decision'))
+
+    def test_failed_card_update_does_not_abort_the_tick_and_is_retried(self):
+        self.cli('install', '--feature', 'demo')
+        (self.orca_dir / 'card-fails').touch()
+        out = self.cli('tick').stdout
+        self.assertIn('claimed 01', out)
+        self.assertIn('card for 01 not updated', out)
+        self.assertEqual(self.ledger()['01']['state'], 'working')
+        (self.orca_dir / 'card-fails').unlink()
+        self.assertNotIn('not updated', self.cli('tick').stdout)
+        self.assertEqual([c[2] for c in self.cards()], ['in-progress', 'in-progress'])
+
+    def test_approve_reruns_the_gate_and_keeps_a_failing_ticket_in_needs_you(self):
+        self.set_radius('**Blast radius:** high\n')
+        self.cli('install', '--feature', 'demo'); self.cli('tick'); self.build(); self.approve()
+        (self.worktree / '.engineering-workflow' / 'gates.sh').write_text('echo "GATES: FAIL tests"\n')
+        self.git('commit', '-qam', 'Break the gate', cwd=self.worktree)
+        before = self.git('rev-parse', 'build/demo')
+        refused = self.cli('approve', '01', ok=False).stdout
+        self.assertIn('01 needs you: gates failed on the ticket branch', refused)
+        entry = self.ledger()['01']
+        self.assertEqual((entry['state'], entry['reason']), ('needs-you', 'gates failed on the ticket branch'))
+        self.assertEqual(self.git('rev-parse', 'build/demo'), before)
+        self.assertEqual(self.cards()[-1], self.held_card('gates failed on the ticket branch'))
+
+    def test_approve_and_requeue_refuse_tickets_in_other_states(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        self.assertIn('not waiting for you', self.cli('approve', '01', ok=False).stderr)
+        self.assertIn('cannot be requeued', self.cli('requeue', '01', ok=False).stderr)
+        self.assertIn('cannot be requeued', self.cli('requeue', '07', ok=False).stderr)
+        self.assertEqual(self.ledger()['01']['state'], 'working')
+
+    def test_requeued_ticket_relaunches_in_its_existing_worktree(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick'); self.build()
+        self.cli('report', '01', 'blocked', '--reason', 'needs an API decision', '--slowed-by', 'spec',
+                 project=self.worktree)
+        tip = self.git('rev-parse', 'factory/demo-01')
+        self.cli('requeue', '01')
+        self.assertEqual(self.ledger()['01']['state'], 'ready')
+        self.assertIn('01 ready factory/demo-01', self.cli('status').stdout)
+        self.cli('tick')
+        entry = self.ledger()['01']
+        self.assertEqual([h['state'] for h in entry['history']], ['working', 'needs-you', 'ready', 'working'])
+        self.assertEqual((entry['branch'], entry['worktree'], entry['turns']),
+                         ('factory/demo-01', str(self.worktree), 0))
+        self.assertEqual(self.git('rev-parse', 'factory/demo-01'), tip)
+        branches = self.git('branch', '--list', '--format=%(refname:short)', 'factory/*').split()
+        self.assertEqual(branches, ['factory/demo-01'])
+        launches = [c for c in self.orca_calls() if c[:2] == ['agent', 'launch']]
+        self.assertEqual([c[c.index('--worktree') + 1] for c in launches], [f'path:{self.worktree}'] * 2)
+        self.assertEqual(self.cards()[-1],
+                         [f'path:{self.worktree}', '--workspace-status', 'in-progress', '--json'])
 
 
 if __name__ == '__main__':
