@@ -1,6 +1,6 @@
 ---
 status: active
-progress: 85
+progress: 95
 next_date: 2026-10-29
 updated: 2026-10-29
 ---
@@ -9,17 +9,18 @@ updated: 2026-10-29
 
 ## Now
 
-Factory mode (v0.3.0) build is running on `build/factory-mode` with
-`ew-subagent-driven-development`: all tickets 01-10 merged (v0.3.0, 115 tests, `verify --expected 0.3.0` green); final review found 2+1 Critical issues (a worker's own gate script gates its merge; a reused ledger after uninstall; a forged project pin inside a worker's worktree can switch off Guard) plus hangs and fail-open paths; one fix pass is running. The build log is at
-`.engineering-workflow-state/sdd/factory-mode/progress.md`. Skill routing (v0.4.0) has
-a spec (`.scratch/skill-routing/spec.md`) but no tickets yet.
+Factory mode v0.3.0 is built on `build/factory-mode` (tickets 01-10 merged, final
+review done and its findings fixed): 127 tests and `verify --expected 0.3.0` pass;
+main is untouched (12c0318). Not pushed, not merged to main. Build log:
+`.engineering-workflow-state/sdd/factory-mode/progress.md`.
 
 ## Next
 
-1. Remove the `orca-spike` repo entry in Orca's UI (left by the spike; no CLI for it).
-2. Build tickets 02-10 on `build/factory-mode` with `ew-subagent-driven-development` (02 first; then 03, 04,
-   05, 06 in parallel; 07 after 05+06; 08 after 04+07; 09 after 05; 10 last).
-3. Skill routing: spec written (`.scratch/skill-routing/spec.md`); next
+1. Decide how to land `build/factory-mode` (merge to main locally, PR, or keep).
+2. Decide the turn-cap message (see Open items), then tag/release v0.3.0.
+3. Remove the `orca-spike` repo entry in Orca's UI (left by the spike; no CLI for it).
+4. First real factory run on a small feature to confirm the unverified Orca facts.
+5. Skill routing: spec written (`.scratch/skill-routing/spec.md`); next
    `/ew-matt-to-tickets` for it.
 
 ## Decisions
@@ -176,13 +177,16 @@ a spec (`.scratch/skill-routing/spec.md`) but no tickets yet.
 
 ## Open items / waiting on
 
-- Unverified: whether Orca automations can run Claude unattended under the current
-  permission mode.
-- Confirm "one cycle = one wave".
-- Unverified: whether Claude agents launched by Orca run the workflow's PostToolUse
-  hook (the turn cap depends on it). Check in the same spike.
-- Unverified: whether the heartbeat accepts `--extra-agent-args="--model haiku"`, and
-  whether a worker can run `factory report` as its last step. Same spike.
+- Your call: a worker at its turn cap is told "run factory report <NN> blocked", but
+  the same hook refuses every tool call, including that one (spec text kept). Either
+  let exactly that report command through, or reword the message.
+- Unverified on real Orca: `terminal read` output shape (bypass check now fails
+  closed if it can't read), and that `terminal show` reports `connected: false` only
+  for dead workers.
+- Untested paths: git timeouts on worktree add/merge/remove; requeue of a leftover
+  claim whose branch is gone. A claim rejected by another host's push retries each tick.
+- Guard is not a sandbox in bypass mode: a worker can edit its own counters/marker or
+  any reachable file; the time cap and the control-file merge hold are the backstops.
 
 ## Idea Shelf
 
