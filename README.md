@@ -1,6 +1,6 @@
 # Engineering workflow
 
-One versioned process for Claude Code, Codex, Gemini CLI and Antigravity. Version **0.2.2**.
+One versioned process for Claude Code, Codex, Gemini CLI and Antigravity. Version **0.2.3**.
 Matt Pocock planning/TDD/review + personal SDD + Ponytail, with Claude Guard,
 portable Autopilot and docs-health. Optional Headroom startup support. No Runpod,
 entertainment, or required TypeSafe dependency.
@@ -11,9 +11,9 @@ Requires Git, Python **3.11+**, and access to this private repository. Clone a
 release, verify it, explicitly select the platform, then install:
 
 ```sh
-git clone --branch v0.2.2 https://github.com/JasonJosephIT/engineering-workflow.git
+git clone --branch v0.2.3 https://github.com/JasonJosephIT/engineering-workflow.git
 cd engineering-workflow
-python3 -B workflow.py verify --expected 0.2.2
+python3 -B workflow.py verify --expected 0.2.3
 python3 -B workflow.py install --scope user --platform codex --dry-run
 python3 -B workflow.py install --scope user --platform codex
 ```
@@ -26,7 +26,7 @@ Or install the same files from GitHub Packages as `@jasonjosephit/ares-workflow`
 ```sh
 echo "@jasonjosephit:registry=https://npm.pkg.github.com" >> ~/.npmrc
 npm login --scope=@jasonjosephit --auth-type=legacy --registry=https://npm.pkg.github.com
-npx @jasonjosephit/ares-workflow verify --expected 0.2.2
+npx @jasonjosephit/ares-workflow verify --expected 0.2.3
 npx @jasonjosephit/ares-workflow install --scope user --platform codex
 ```
 

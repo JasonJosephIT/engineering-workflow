@@ -24,7 +24,8 @@ Both designs are merged to main. Factory spec and 10 tickets: `.scratch/factory-
    05, 06 in parallel; 07 after 05+06; 08 after 04+07; 09 after 05; 10 last).
 3. Skill routing: spec written (`.scratch/skill-routing/spec.md`); next
    `/ew-matt-to-tickets` for it.
-4. npm: create a GitHub token with `write:packages`, then bump to 0.2.3, tag it, and `npm publish` from that tag (v0.2.2 predates package.json and has a different lock).
+4. npm: 0.2.3 is bumped and locked on `claude/npm-package-check-cf8fd4`. Merge to main, tag
+   v0.2.3, push the tag, then `npm publish` with a GitHub token that has `write:packages`.
 
 ## Decisions
 

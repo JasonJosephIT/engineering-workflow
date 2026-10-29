@@ -1,6 +1,6 @@
 {
   "name": "@jasonjosephit/ares-workflow",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Ares Workflow: one versioned engineering workflow for Claude Code, Codex, Gemini CLI and Antigravity.",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
