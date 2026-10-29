@@ -24,6 +24,7 @@ HOLD_REASON = "high blast radius: waiting for approval"
 CARDS = {"working": "in-progress", "needs-you": "in-review", "merged": "completed"}
 REQUEUABLE = ("needs-you", "capped", "interrupted")
 HEARTBEAT_PROMPT = "Run `workflow.py factory tick` for this project, report its output, do nothing else."
+FRESH_COUNTERS = {"turns": 0, "permission_needed": False}
 
 
 def now(): return datetime.now(timezone.utc).isoformat()
@@ -92,6 +93,12 @@ def stop_worker(handle):
     return not worker_alive(handle)
 
 
+def stop(entry):
+    """Stop the entry's worker; False when Orca cannot confirm it stopped."""
+    try: return not entry["worker_handle"] or stop_worker(entry["worker_handle"])
+    except (ValueError, OSError, subprocess.SubprocessError): return False  # what the adapter can raise
+
+
 def worker_in_bypass(handle):
     text = json.dumps(orca("terminal", "read", "--terminal", handle, "--limit", "40")).lower()
     return "dangerously-skip-permissions" in text or "bypass permissions" in text
@@ -106,6 +113,30 @@ def ticket_marker(project):
 def state_dir(project):
     marker = ticket_marker(project)
     return Path(read_json(marker)["state_dir"]) if marker.is_file() else find_project(project) / STATE / "factory"
+
+
+def counters(worktree, change=None):
+    """The worktree's hook counters; `change` edits them in place. Kept out of the ledger so hooks never
+    wait on the tick lock, which tick holds through pre-merge gates."""
+    path = Path(worktree) / STATE / "factory-turns.json"
+    with open(path.with_name("factory-turns.lock"), "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        data = {**FRESH_COUNTERS, **(read_json(path) if path.is_file() else {})}
+        if change:
+            change(data)
+            save(path, data)
+    return data
+
+
+def worker(project):
+    """(ticket, turns, max_turns) for a hook in a ticket worktree; raises when a factory file is unreadable."""
+    ticket = read_json(ticket_marker(project))
+    state = read_json(Path(ticket["state_dir"]) / "state.json")
+    return ticket["ticket"], counters(project)["turns"], int(state["max_turns"])
+
+
+def count_turn(project): counters(project, lambda c: c.update(turns=c["turns"] + 1))
+def flag_permission(project): counters(project, lambda c: c.update(permission_needed=True))
 
 
 def load(directory):
@@ -325,6 +356,7 @@ def launch(state, entry, ticket, out, started=None):
 def relaunch(state, entry, ticket, out):
     """Start a fresh worker for a requeued ticket in its existing branch and worktree."""
     entry.update(started_at=now(), turns=0, queue_wait_seconds=0)  # caps count this run only
+    counters(entry["worktree"], lambda c: c.update(FRESH_COUNTERS))
     move(entry, "working")
     launch(state, entry, ticket, out, started=f"relaunched {ticket['id']} in its worktree")
 
@@ -361,6 +393,36 @@ def start_tickets(state, ledger, out):
             launch(state, entry, ticket, out)
 
 
+def reconcile(ledger, out):
+    """Tick step 1: a working ticket whose worker is gone without reporting is interrupted."""
+    for ticket, entry in ledger.items():
+        if entry["state"] != "working" or not entry["worker_handle"]:
+            continue
+        try: alive = worker_alive(entry["worker_handle"])
+        except (ValueError, OSError, subprocess.SubprocessError): continue  # check again next tick
+        if not alive:
+            move(entry, "interrupted", "worker exited without reporting")
+            out.append(f"interrupted {ticket}: worker exited without reporting")
+
+
+def enforce_caps(state, ledger, out):
+    """Tick step 2: stop a worker that needs a permission or is over its turn or time cap; keep its work."""
+    for ticket, entry in ledger.items():
+        if entry["state"] != "working":
+            continue
+        hooks = counters(entry["worktree"])
+        entry["turns"] = hooks["turns"]
+        started = datetime.fromisoformat(entry["started_at"])
+        working = (datetime.now(timezone.utc) - started).total_seconds() - entry["queue_wait_seconds"]
+        if hooks["permission_needed"]: new, reason = "needs-you", "permission needed"
+        elif entry["turns"] >= state["max_turns"]: new, reason = "capped", "turn cap"
+        elif working > state["max_minutes"] * 60: new, reason = "capped", "time cap"
+        else: continue
+        if not stop(entry): out.append(f"worker {entry['worker_handle']} did not stop; close it in Orca")
+        move(entry, new, reason)
+        out.append(f"{ticket} {new}: {reason}; {entry['branch']} and its worktree are kept")
+
+
 def update_cards(ledger, out):
     for ticket, entry in ledger.items():
         card(ticket, entry, out)
@@ -392,6 +454,8 @@ def tick(directory):
         state, ledger = load(directory)
         out = []
         try:
+            reconcile(ledger, out)
+            enforce_caps(state, ledger, out)
             merge_approved(state, ledger, out)
             start_tickets(state, ledger, out)
             update_mode(state, ledger, out)
@@ -530,9 +594,7 @@ def pause(args):
         for ticket, entry in ledger.items():
             if entry["state"] != "working":
                 continue
-            try: stopped = not entry["worker_handle"] or stop_worker(entry["worker_handle"])
-            except (ValueError, subprocess.SubprocessError): stopped = False  # what the adapter can raise
-            if not stopped: print(f"worker {entry['worker_handle']} did not stop; close it in Orca")
+            if not stop(entry): print(f"worker {entry['worker_handle']} did not stop; close it in Orca")
             move(entry, "interrupted")
             print(f"interrupted {ticket}; {entry['branch']} and its worktree are kept")
         state["mode"] = "paused"

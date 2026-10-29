@@ -1,4 +1,5 @@
 """Factory CLI tests: a temp git repo and a fake `orca` on PATH that logs every call."""
+from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
@@ -31,14 +32,18 @@ elif words.startswith('repo show'): reply(ok=not (control / 'unregistered').exis
 elif words.startswith('automations create'): reply(automation={{'id': 'auto_1'}})
 elif words.startswith('agent launch') and (control / 'launch-fails').exists():
     print(json.dumps({{'ok': False, 'error': {{'code': 'runtime_error', 'message': 'no workspace for path'}}}}))
-elif words.startswith('agent launch'): reply(launch={{'outcome': {{'handle': 'term_1'}}}})
+elif words.startswith('agent launch'):
+    launched = sum(line.startswith('["agent", "launch"') for line in (control / 'log.jsonl').read_text().splitlines())
+    reply(launch={{'outcome': {{'handle': f'term_{{launched}}'}}}})
 elif words.startswith('terminal read'):
     bypass = (control / 'bypass').exists()
     reply(text='claude --dangerously-skip-permissions' if bypass else 'claude')
 elif words.startswith('worktree set'): reply(ok=not (control / 'card-fails').exists(), worktree={{}})
-elif words.startswith('terminal close'): reply(ok=False)
+elif words.startswith('terminal close'):  # closes the terminal, yet reports ok:false like the real CLI
+    (control / f"dead-{{args[args.index('--terminal') + 1]}}").touch(); reply(ok=False)
 elif words.startswith('terminal show') and (control / 'show-fails').exists(): reply(ok=False)
-elif words.startswith('terminal show'): reply(terminal={{'connected': False, 'exitCause': 'closed'}})
+elif words.startswith('terminal show'):
+    reply(terminal={{'connected': not (control / f"dead-{{args[args.index('--terminal') + 1]}}").exists()}})
 else: reply(ok=False)
 """
 GATES = 'echo "checking"\necho "${FAKE_GATE:-GATES: PASS}"\n'
@@ -757,6 +762,122 @@ class FactoryTests(unittest.TestCase):
         self.assertEqual(launches.count(f'path:{other}'), 3)
         self.assertEqual(self.git('branch', '--list', '--format=%(refname:short)', 'factory/*').split(),
                          ['factory/demo-01', 'factory/demo-02'])
+
+    # --- ticket 07 ---
+    def test_dead_worker_that_never_reported_is_interrupted_and_an_orca_error_skips_the_check(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        (self.orca_dir / 'show-fails').touch()
+        self.cli('tick')
+        self.assertEqual(self.ledger()['01']['state'], 'working')
+        (self.orca_dir / 'show-fails').unlink()
+        (self.orca_dir / 'dead-term_1').touch()  # the worker died
+        self.assertIn('interrupted 01: worker exited without reporting', self.cli('tick').stdout)
+        entry = self.ledger()['01']
+        self.assertEqual((entry['state'], entry['reason']), ('interrupted', 'worker exited without reporting'))
+        self.assertTrue(self.worktree.exists())
+
+    def hook(self, event, cwd=None, **data):
+        payload = {'hook_event_name': event, 'cwd': str(cwd or self.worktree), **data}
+        result = subprocess.run([sys.executable, '-B', str(ROOT / 'workflow.py'), 'hook', '--platform', 'claude'],
+                                input=json.dumps(payload), text=True, capture_output=True, env=self.env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
+    def bash(self, command, cwd=None):
+        return self.hook('PreToolUse', cwd, tool_name='Bash', tool_input={'command': command})
+
+    def denied(self, reason):
+        return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny',
+                                       'permissionDecisionReason': reason}}
+
+    def test_turn_cap_refuses_every_tool_then_tick_caps_and_requeue_starts_fresh(self):
+        self.cli('install', '--feature', 'demo'); self.set_state(max_turns=2); self.cli('tick')
+        read = {'tool_name': 'Read', 'tool_input': {'file_path': 'README.md'}}
+        self.assertEqual(self.hook('PreToolUse', **read), {})
+        self.hook('PostToolUse', **read); self.hook('PostToolUse', **read)
+        capped = self.denied('Factory turn cap reached; run factory report 01 blocked')
+        self.assertEqual(self.hook('PreToolUse', **read), capped)
+        self.assertEqual(self.bash('git status'), capped)
+        self.build('half.txt', 'half done\n')
+        self.assertIn('01 capped: turn cap', self.cli('tick').stdout)
+        entry = self.ledger()['01']
+        self.assertEqual((entry['state'], entry['reason'], entry['turns']), ('capped', 'turn cap', 2))
+        self.assertIn(['terminal', 'close', '--terminal', 'term_1', '--json'], self.orca_calls())
+        self.assertEqual(self.git('show', 'factory/demo-01:half.txt'), 'half done')
+        self.cli('requeue', '01')
+        self.assertIn('relaunched 01 in its worktree', self.cli('tick').stdout)
+        entry = self.ledger()['01']
+        self.assertEqual((entry['state'], entry['turns'], entry['worker_handle']), ('working', 0, 'term_2'))
+        self.assertEqual(self.launches()[-1][self.launches()[-1].index('--worktree') + 1], f'path:{self.worktree}')
+        self.assertEqual(self.hook('PreToolUse', **read), {})
+        self.cli('tick')
+        self.assertEqual(self.ledger()['01']['state'], 'working')
+
+    def test_hooks_outside_a_ticket_worktree_neither_count_nor_cap(self):
+        self.cli('install', '--feature', 'demo'); self.set_state(max_turns=1); self.cli('tick')
+        read = {'tool_name': 'Read', 'tool_input': {'file_path': 'README.md'}}
+        for _ in range(2): self.hook('PostToolUse', self.project, **read)
+        self.assertEqual(self.hook('PreToolUse', self.project, **read), {})
+        self.assertFalse((self.project / '.engineering-workflow-state' / 'factory-turns.json').exists())
+        self.cli('tick')
+        self.assertEqual((self.ledger()['01']['state'], self.ledger()['01']['turns']), ('working', 0))
+
+    def test_guard_ask_becomes_deny_in_a_ticket_worktree_and_tick_parks_it_as_permission_needed(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        withheld = self.denied('Claude Guard requires local review of this command; command text withheld.')
+        asked = {'hookSpecificOutput': {**withheld['hookSpecificOutput'], 'permissionDecision': 'ask'}}
+        self.assertEqual(self.bash('git reset --hard', self.project), asked)  # outside: unchanged
+        self.assertEqual(self.bash('rm -rf /'), withheld)  # Guard deny stays deny ...
+        self.cli('tick')
+        self.assertEqual(self.ledger()['01']['state'], 'working')  # ... and parks nothing
+        self.assertEqual(self.bash('git reset --hard'), withheld)
+        self.assertIn('01 needs-you: permission needed', self.cli('tick').stdout)
+        entry = self.ledger()['01']
+        self.assertEqual((entry['state'], entry['reason']), ('needs-you', 'permission needed'))
+        self.assertIn(['terminal', 'close', '--terminal', 'term_1', '--json'], self.orca_calls())
+        self.assertEqual(self.cards()[-1], self.held_card('permission needed'))
+        self.assertTrue(self.worktree.exists())
+
+    def test_unreadable_factory_files_in_a_worktree_fall_back_to_plain_guard(self):
+        self.cli('install', '--feature', 'demo'); self.set_state(max_turns=1); self.cli('tick')
+        self.hook('PostToolUse', tool_name='Read', tool_input={'file_path': 'README.md'})
+        (self.state_dir / 'state.json').write_text('{not json')
+        asked = self.bash('git reset --hard')
+        self.assertEqual(asked['hookSpecificOutput']['permissionDecision'], 'ask')
+        self.assertEqual(self.bash('rm -rf /')['hookSpecificOutput']['permissionDecision'], 'deny')
+        self.assertEqual(self.bash('git status'), {})
+
+    def test_time_cap_counts_working_minutes_without_queue_wait(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+
+        def started(minutes_ago, waited_minutes):
+            ledger = self.ledger()
+            begun = datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)
+            ledger['01'].update(started_at=begun.isoformat(), queue_wait_seconds=waited_minutes * 60)
+            (self.state_dir / 'ledger.json').write_text(json.dumps(ledger))
+
+        started(100, 20)  # 80 working minutes: under the 90-minute cap
+        self.cli('tick')
+        self.assertEqual(self.ledger()['01']['state'], 'working')
+        started(100, 5)
+        self.assertIn('01 capped: time cap', self.cli('tick').stdout)
+        entry = self.ledger()['01']
+        self.assertEqual((entry['state'], entry['reason']), ('capped', 'time cap'))
+        self.assertIn(['terminal', 'close', '--terminal', 'term_1', '--json'], self.orca_calls())
+        self.assertTrue(self.worktree.exists())
+        self.git('rev-parse', '--verify', 'refs/heads/factory/demo-01')
+
+    def test_interrupted_ticket_requeued_resumes_in_its_worktree_and_branch(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        self.build('half.txt', 'half done\n')
+        self.cli('pause', '--now')
+        self.cli('requeue', '01')
+        self.assertIn('relaunched 01 in its worktree', self.cli('resume').stdout)
+        entry = self.ledger()['01']
+        self.assertEqual([h['state'] for h in entry['history']], ['working', 'interrupted', 'ready', 'working'])
+        self.assertEqual((entry['branch'], entry['worktree']), ('factory/demo-01', str(self.worktree)))
+        self.assertEqual([c[c.index('--worktree') + 1] for c in self.launches()], [f'path:{self.worktree}'] * 2)
+        self.assertEqual(self.git('show', 'factory/demo-01:half.txt'), 'half done')
 
 
 if __name__ == '__main__':
