@@ -1,6 +1,6 @@
 ---
 status: active
-progress: 75
+progress: 85
 next_date: 2026-10-29
 updated: 2026-10-29
 ---
@@ -10,7 +10,7 @@ updated: 2026-10-29
 ## Now
 
 Factory mode (v0.3.0) build is running on `build/factory-mode` with
-`ew-subagent-driven-development`: tickets 01-07 and 09 merged; 08 (back-pressure, status summary) building; then 10 (release). The build log is at
+`ew-subagent-driven-development`: all tickets 01-10 merged (v0.3.0, 115 tests, `verify --expected 0.3.0` green); final whole-branch review (code, ponytail, security) running, then one fix pass. The build log is at
 `.engineering-workflow-state/sdd/factory-mode/progress.md`. Skill routing (v0.4.0) has
 a spec (`.scratch/skill-routing/spec.md`) but no tickets yet.
 
