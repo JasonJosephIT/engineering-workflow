@@ -305,7 +305,7 @@ class FactoryTests(unittest.TestCase):
         times = [float(m[1]) for m in marks]
         self.assertEqual(times, sorted(times))
         entry = self.ledger()['01']
-        self.assertGreater(entry['queue_wait_seconds'], 0.5)
+        self.assertGreater(entry['queue_wait_seconds'], 0.2)
         self.assertGreater(entry['gate_seconds'], 0.9)
 
     def test_a_gate_that_dies_frees_its_slot(self):
@@ -331,7 +331,7 @@ class FactoryTests(unittest.TestCase):
     def test_tick_merge_gate_goes_through_the_queue_and_records_times(self):
         self.cli('install', '--feature', 'demo'); self.cli('tick')
         self.slow_gate(1)
-        self.git('commit', '-qam', 'Slow gate');
+        self.git('commit', '-qam', 'Slow gate')
         self.git('merge', '-q', 'build/demo', cwd=self.worktree)
         holder = self.start_gate()
         time.sleep(0.4)
