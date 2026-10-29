@@ -1,0 +1,79 @@
+<!doctype html><html lang="en" data-lavish-annotate="on"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skill Routing Spec</title><style>
+:root{
+  --bg:#f7f6f2; --panel:#ffffff; --ink:#1d1d1b; --muted:#6b6a63; --line:#dcdad2;
+  --human:#2f6fdb; --human-bg:#e7efff; --agent:#1f8a5b; --agent-bg:#e3f4ec;
+  --orca:#8a4fd1; --orca-bg:#f1e8fc; --warn:#c26a00; --warn-bg:#fff1dc; --stop:#c23b3b;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#151513; --panel:#1f1f1c; --ink:#ecebe6; --muted:#a3a198; --line:#3a3934;
+    --human:#7aa7ff; --human-bg:#1d2a44; --agent:#5fd19c; --agent-bg:#173126;
+    --orca:#c39bff; --orca-bg:#2c2140; --warn:#ffb456; --warn-bg:#3a2a12; --stop:#ff7b7b;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#151513; --panel:#1f1f1c; --ink:#ecebe6; --muted:#a3a198; --line:#3a3934;
+  --human:#7aa7ff; --human-bg:#1d2a44; --agent:#5fd19c; --agent-bg:#173126;
+  --orca:#c39bff; --orca-bg:#2c2140; --warn:#ffb456; --warn-bg:#3a2a12; --stop:#ff7b7b;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif}
+main{max-width:1040px;margin:0 auto;padding:28px 16px 64px}
+h1{font-size:28px;margin:0 0 4px;letter-spacing:-.01em}
+h2{font-size:19px;margin:36px 0 10px}
+h3{font-size:15px;margin:0 0 6px}
+p{margin:6px 0}
+.sub{color:var(--muted)}
+.pill{display:inline-block;font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted);margin-right:6px}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr))}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}
+.card.h{border-left:4px solid var(--human)} .card.a{border-left:4px solid var(--agent)} .card.o{border-left:4px solid var(--orca)} .card.w{border-left:4px solid var(--warn)}
+code,.mono{font-family:var(--mono);font-size:12.5px}
+code{background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:0 4px;overflow-wrap:anywhere}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.5;margin:8px 0}
+table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);background:var(--bg)}
+tr:last-child td{border-bottom:0}
+.tablewrap{overflow-x:auto}
+.same{color:var(--muted)} .new{color:var(--orca);font-weight:600}
+svg{width:100%;height:auto;display:block}
+svg text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:var(--ink)}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--muted);margin:6px 0 0}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px;background:var(--c)}
+.cmd{display:grid;grid-template-columns:minmax(0,190px) minmax(0,1fr);gap:4px 14px;align-items:baseline}
+.cmd .mono{color:var(--orca);font-weight:600}
+form.q{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin:10px 0}
+form.q label{display:block;padding:5px 0;cursor:pointer}
+form.q .rec{font-size:11px;color:var(--agent);font-weight:700;margin-left:6px}
+button{font:inherit;padding:7px 14px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer}
+button.primary{background:var(--human);border-color:var(--human);color:#fff}
+.note{background:var(--warn-bg);border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:8px;padding:10px 12px}
+</style>
+<style>details{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:10px 0} summary{cursor:pointer;font-weight:600} ol li{margin:4px 0}</style></head><body><main>
+<header><span class="pill">Status: ready-for-agent</span><span class="pill">v0.4.0 (after factory v0.3.0)</span><span class="pill">.scratch/skill-routing/spec.md</span>
+<h1>Skill routing spec</h1><p class="sub">Each stage names its skill, add-ons install pinned and verified, domain packs link into one project, and every live ticket gets a state file the dashboard reads.</p></header>
+<div class="grid" style="margin-top:18px">
+<div class="card w"><h3>Problem</h3><p>~150 skills load per session, ~65 with no description. Useful tools are wired into no stage. Domain skills load everywhere. No view of live tickets.</p></div>
+<div class="card a"><h3>Solution</h3><p>Routing table in WORKFLOW.md (only when installed, report when missing), <code>addon</code> and <code>pack</code> commands, session report of add-ons, and <code>ticket</code> state files for ew-flightdeck.</p></div></div>
+<h2>Routing table</h2><div class="tablewrap"><table><tr><th>Stage</th><th>Skill</th><th>When</th></tr><tr><td>Session start</td><td><code>graphify</code></td><td>graph exists: read GRAPH_REPORT.md first; none: offer once to build (no LLM), remember a no</td></tr><tr><td>Planning</td><td><code>graphify query · codebase-explainer</code></td><td>query before reading code · explainer for unfamiliar repos or on request</td></tr><tr><td>Build (SDD, factory)</td><td><code>graphify</code></td><td>context packs start from graph neighbours of the ticket&#x27;s files</td></tr><tr><td>Bug / failing test</td><td><code>ew-matt-diagnosing-bugs</code></td><td>anything broken, throwing or slow</td></tr><tr><td>Branch review + Orca</td><td><code>multi-model-review</code></td><td>replaces code-review + ponytail-review</td></tr><tr><td>Branch review, no Orca</td><td><code>code-review → ponytail-review</code></td><td>multi-model-review only on request</td></tr><tr><td>UI spec or ticket</td><td><code>design-genius design-director</code></td><td>direction before the build</td></tr><tr><td>Review, UI changed</td><td><code>design-genius critique</code></td><td>next to the branch review</td></tr><tr><td>After merge</td><td><code>graphify update</code></td><td>refresh and commit graphify-out/</td></tr></table></div>
+<h2>New commands</h2><div class="grid">
+<div class="card o"><h3>addon</h3><p><code>install &lt;name&gt; [ref]</code> · <code>list</code> · <code>remove</code>. Git clone of a tag; pinned by tag, commit and file hashes; verified every session; tampered = reported and not trusted; Claude-only skipped elsewhere.</p></div>
+<div class="card o"><h3>pack</h3><p><code>add</code> · <code>remove</code> · <code>list</code>. Packs defined in your user config (no paths in the repo); links into one project; refuses name collisions.</p></div>
+<div class="card o"><h3>ticket</h3><p><code>start</code> · <code>update</code> · <code>done</code>. One JSON file per live ticket in your local state folder; SDD and factory both write it; PreToolUse ask/deny recorded; stale files pruned after 24h.</p></div>
+<div class="card o"><h3>session report</h3><p>Lists each add-on: installed, missing, tampered or skipped. Offers a code-only graph once; <code>docs --decline-graph</code> remembers a no.</p></div></div>
+<h2>Ticket state file (format 1)</h2>
+<pre>{ "format": 1, "project_id", "project_path", "ticket", "title", "feature",
+  "source": "sdd" | "factory", "step", "agents": [..], "worktree",
+  "permission": { "decision": "ask" | "deny", "at" } | null,
+  "started_at", "updated_at" }</pre>
+<h2>Test seam</h2><div class="grid">
+<div class="card o"><h3>One seam: the CLI</h3><p><code>addon</code>, <code>pack</code>, <code>ticket</code>, <code>session</code>, <code>docs</code>, <code>hook</code> as subprocesses with a temp project and temp HOME.</p></div>
+<div class="card o"><h3>Fakes</h3><p>Local git repos with tagged releases stand in for add-ons; the registry is overridden for tests.</p></div>
+<div class="card w"><h3>Not unit-tested</h3><p>The routing table (instructions) and the external repos (ew-flightdeck, multi-model-review, design-genius).</p></div></div>
+<details><summary>All 42 user stories</summary><ol><li>As a developer, I want each workflow stage to name the skill it uses, so that graphify, multi-model-review, codebase-explainer and design-genius are used at the right moment without me remembering.</li><li>As a developer, I want a routed skill used only when it is installed, so that the workflow still works on a machine without it.</li><li>As a developer, I want the session report to list which routed add-ons were found and which are missing, so that I know what the agent can and can&#x27;t use this session.</li><li>As a developer, I want a missing add-on reported, never faked, so that I can trust what the agent says it ran.</li><li>As a developer, I want sessions in a repo with a graph to read the graph report before broad exploration, so that agents spend fewer tokens finding their way.</li><li>As a developer, I want to be offered, once, a code-only graph (no LLM) in an engineering repo that has none, so that new repos get navigation cheaply.</li><li>As a developer, I want a &quot;no&quot; to that offer remembered for that repo, so that I am not asked every session.</li><li>As a developer, I want planning stages to run a graph query before reading code for a question, so that exploration starts from structure.</li><li>As a developer, I want codebase-explainer offered for an unfamiliar repo or when I ask for an explanation, so that I get a map before decisions.</li><li>As a developer, I want SDD context packs to start from the graph neighbours of a ticket&#x27;s files, so that implementers get the right context first.</li><li>As a developer, I want anything broken, throwing or slow routed to diagnosing-bugs, so that bugs get a real diagnosis loop.</li><li>As a developer, I want multi-model-review to run at every branch review when Orca is available, replacing code-review plus ponytail-review, so that one review covers both axes with several models.</li><li>As a developer, I want code-review then ponytail-review at branch review when Orca is not available, with multi-model-review only when I ask, so that reviews still happen without Orca.</li><li>As a developer, I want any spec or ticket that changes UI routed to design-genius `design-director` before the build, so that UI work starts with a direction.</li><li>As a developer, I want design-genius `critique` run at branch review when UI changed, so that UI gets a design review next to the code review.</li><li>As a developer, I want design asks outside a ticket left to me to prompt, so that design-genius isn&#x27;t forced into unrelated work.</li><li>As a developer, I want the graph refreshed and committed after merge when graphify is installed, so that later and cloud sessions see the current graph.</li><li>As a developer, I want factory workers and the factory&#x27;s final review to follow the same routing, so that unattended work meets the same bar.</li><li>As a developer, I want `workflow.py addon install &lt;name&gt;` to fetch a tagged release of a known add-on, so that I install tools one way.</li><li>As a developer, I want each add-on pinned to a tag, a commit and the hashes of its files, so that what runs is exactly what I installed.</li><li>As a developer, I want add-ons verified at every session start like EW&#x27;s own skills, so that tampering or drift is caught.</li><li>As a developer, I want a tampered or drifted add-on reported and not used, so that a changed skill never runs silently.</li><li>As a developer, I want `addon list` to show each add-on&#x27;s name, version, platforms and verification state, so that I can see what I have.</li><li>As a developer, I want `addon remove &lt;name&gt;` to unlink and delete one add-on and nothing else, so that removal is safe.</li><li>As a developer, I want `addon install &lt;name&gt; &lt;ref&gt;` to install a specific tag, so that I can pin or roll back.</li><li>As a developer, I want a Claude-only add-on (ew-flightdeck) skipped on Codex and Gemini with a report, so that other platforms don&#x27;t break.</li><li>As a developer, I want add-on installs to refuse to overwrite unmanaged skill folders, so that my own skills are never clobbered.</li><li>As a developer, I want add-on installs to work for a user install and for a project pin, so that cloud sessions can get the same add-ons.</li><li>As a developer, I want `workflow.py pack add &lt;pack&gt;` to link a domain pack&#x27;s skills into one project, so that domain skills load only where they are useful.</li><li>As a developer, I want `pack remove &lt;pack&gt;` to remove only that pack&#x27;s links from the project, so that I can undo it cleanly.</li><li>As a developer, I want packs defined in my own user configuration, not in the workflow repo, so that no machine paths are committed.</li><li>As a developer, I want `pack list` to show packs available and packs linked in this project, so that I can see what&#x27;s active.</li><li>As a developer, I want `pack add` to refuse when a skill name in the pack collides with an existing skill in the project, so that nothing is shadowed silently.</li><li>As a developer, I want `workflow.py ticket start|update|done` to write one small state file per ticket in progress, so that dashboards and later sessions can see live work.</li><li>As a developer, I want factory mode to write the same ticket state files as SDD, so that one dashboard shows both.</li><li>As a developer, I want permission checks (Guard ask or deny) inside a ticket&#x27;s worktree recorded in that ticket&#x27;s state file, so that the dashboard shows which tickets are waiting on a permission.</li><li>As a developer, I want ticket state files kept in my local workflow state folder, outside any repo, so that nothing private is committed and every project shows in one place.</li><li>As a developer, I want a finished ticket&#x27;s state file removed (or marked done and pruned after a day), so that the dashboard shows only live work.</li><li>As a developer, I want the ticket state file format documented and versioned, so that ew-flightdeck can rely on it.</li><li>As a workflow maintainer, I want the routing table in the core workflow text for every platform, so that Claude, Codex, Gemini and Antigravity follow the same routes.</li><li>As a workflow maintainer, I want add-on and pack code to use the standard library only and the existing CLI-subprocess test style, so that it matches the package.</li><li>As a workflow maintainer, I want the add-on registry (known names and their repositories) in the package, so that `addon install graphify` needs no URL.</li></ol></details>
+<h2>Out of scope</h2><p class="sub">Building ew-flightdeck, multi-model-review or design-genius repos · running third-party installers · moving your global skills automatically · phone views · factory changes beyond the shared ticket state code.</p>
+<h2>One-off machine steps (not code)</h2><p class="sub">Disable the duplicate mattpocock-skills plugin and anthropic-skills:ponytail*; remove stale ew-* copies; move web-design, output-engine and personal skills into packs; remove frontend-team once design-genius is installed.</p>
+</main></body></html>

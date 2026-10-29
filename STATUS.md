@@ -22,11 +22,19 @@ Both designs are merged to main. Factory spec and 10 tickets: `.scratch/factory-
    in `.scratch/factory-mode/issues/01-orca-spike.md` under `## Comments`.
 2. Build tickets 02-10 with `ew-subagent-driven-development` (02 first; then 03, 04,
    05, 06 in parallel; 07 after 05+06; 08 after 04+07; 09 after 05; 10 last).
-3. Right behind factory mode: `/ew-matt-to-spec` from `docs/skill-routing.md`, then
-   `/ew-matt-to-tickets`.
+3. Skill routing: spec written (`.scratch/skill-routing/spec.md`); next
+   `/ew-matt-to-tickets` for it.
 
 ## Decisions
 
+- 2026-10-28: Skill routing spec written (`.scratch/skill-routing/spec.md`,
+  ready-for-agent), release v0.4.0. Settled: add-ons fetched by git tag and pinned by
+  tag + commit + file hashes, verified at session start (tampered = reported, not
+  trusted); Claude-only add-ons skipped on other platforms with a report; packs are
+  defined in user config, never in the repo; new `ticket start|update|done` command
+  writes format-1 state files that ew-flightdeck reads, shared by SDD and factory;
+  `docs --decline-graph` remembers a "no" to the graph offer. Test seam: the
+  `workflow.py` CLI with fake add-on git repos and a temp HOME.
 - 2026-10-28: Factory mode split into 10 tickets under `.scratch/factory-mode/issues/`:
   01 Orca spike (manual), 02 tracer, 03 order/limits, 04 risk/needs-you, 05 modes,
   06 build queue, 07 caps (high radius: Guard hook path), 08 back-pressure/reporting,
