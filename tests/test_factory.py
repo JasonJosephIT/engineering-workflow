@@ -59,7 +59,8 @@ class FactoryTests(unittest.TestCase):
         self.project = self.base / 'project with spaces'; self.project.mkdir()
         self.orca_dir = self.base / 'orca'; self.orca_dir.mkdir()
         self.fakebin = self.base / 'fake bin'; self.fakebin.mkdir()
-        orca = self.fakebin / 'orca'; orca.write_text(FAKE_ORCA); orca.chmod(0o755)
+        for name in ('orca', 'orca-ide'):  # the adapter resolves orca-ide on Linux
+            orca = self.fakebin / name; orca.write_text(FAKE_ORCA); orca.chmod(0o755)
         self.env = {**os.environ, 'PATH': f'{self.fakebin}:{os.environ["PATH"]}',
                     'FAKE_ORCA_DIR': str(self.orca_dir)}
         self.env.pop('ORCA_CLI_COMMAND', None)
