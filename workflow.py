@@ -60,7 +60,7 @@ def git(*args, cwd=None):
 
 
 def package_paths(root=ROOT):
-    for name in ("workflow.py", "reviews.py", "VERSION", "README.md", "SOURCES.md", "LICENSE"):
+    for name in ("workflow.py", "reviews.py", "factory.py", "VERSION", "README.md", "SOURCES.md", "LICENSE"):
         yield root / name
     for name in ("core", "adapters", "skills", "vendor"):
         for p in sorted((root / name).rglob("*")):
@@ -590,10 +590,12 @@ def hook(platform, data, event=None):
 
 
 def main():
+    import factory
     import reviews
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest="command", required=True)
     reviews.add_parser(sub)
+    factory.add_parser(sub)
     sub.add_parser("freeze", help="Maintainer: regenerate release checksums")
     v = sub.add_parser("verify"); v.add_argument("--expected")
     i = sub.add_parser("install")
@@ -618,7 +620,7 @@ def main():
     a = p.parse_args()
     try:
         raw_hook = None
-        if a.command in ("session", "doctor", "docs", "goal", "hook", "project", "review"):
+        if a.command in ("session", "doctor", "docs", "goal", "hook", "project", "review", "factory"):
             if a.command == "hook":
                 raw_hook = sys.stdin.read()
                 data = json.loads(raw_hook) if raw_hook.strip() else {}
@@ -638,6 +640,7 @@ def main():
                                        *sys.argv[1:]], input=raw_hook, text=True).returncode
         if a.command == "freeze": freeze()
         elif a.command in ("project", "review"): print(json.dumps(reviews.run(a), indent=2))
+        elif a.command == "factory": return factory.run(a)
         elif a.command == "verify": print("Verified workflow", verify(expected=a.expected)["version"])
         elif a.command == "install": install(a)
         elif a.command in ("session", "doctor"): print(json.dumps(session(a.project, a.platform, a.expected, a.check_upstream), indent=2))
