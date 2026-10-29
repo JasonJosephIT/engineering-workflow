@@ -20,6 +20,9 @@ GATES = Path(".engineering-workflow") / "gates.sh"
 PROTECTED = ("main", "master")
 BYPASS_REASON = ("Orca launched in bypass mode; remove it from Orca's Claude arguments "
                  "or reinstall with --allow-bypass")
+HOLD_REASON = "high blast radius: waiting for approval"
+CARDS = {"working": "in-progress", "needs-you": "in-review", "merged": "completed"}
+REQUEUABLE = ("needs-you", "capped", "interrupted")
 HEARTBEAT_PROMPT = "Run `workflow.py factory tick` for this project, report its output, do nothing else."
 
 
@@ -57,6 +60,12 @@ def repo_registered(checkout):
     try: orca("repo", "show", "--repo", f"path:{checkout}")
     except ValueError: return False
     return True
+
+
+def set_card(worktree, status, comment=None):
+    """Set the worktree's Orca card; a comment also raises the unread dot."""
+    extra = ["--comment", comment, "--unread"] if comment else []
+    orca("worktree", "set", "--worktree", f"path:{worktree}", "--workspace-status", status, *extra)
 
 
 def register_heartbeat(state):
@@ -115,7 +124,10 @@ def tickets(checkout, feature):
         fields = {}
         for key, value in re.findall(r"^\**([A-Z][A-Za-z ]*?):\**[ \t]*(\S.*?)[ \t]*$", path.read_text(), re.M):
             fields.setdefault(key, value)  # the header's line wins over later body lines
-        found.append({"id": path.name[:2], "path": path, "status": fields.get("Status", "")})
+        radius = fields.get("Blast radius")
+        found.append({"id": path.name[:2], "path": path, "status": fields.get("Status", ""),
+                      "radius": radius if radius in ("low", "medium") else "high",
+                      "blocked_by": re.findall(r"(?:^|,)\s*(\d\d)\b", fields.get("Blocked by", ""))})
     return found
 
 
@@ -126,17 +138,35 @@ def ready_tickets(state, ledger):
     def merged(blocker):  # a blocker outside the ledger is a manual ticket: resolved/done counts
         return ledger[blocker]["state"] == "merged" if blocker in ledger else status.get(blocker) in ("resolved", "done")
 
-    def unblocked(ticket):
-        line = re.search(r"^\**Blocked by:\**[ \t]*(.*)$", ticket["path"].read_text(), re.M)
-        return all(merged(b) for b in re.findall(r"(?:^|,)\s*(\d\d)\b", line.group(1) if line else ""))
+    def fresh(ticket):
+        return ticket["status"] == "ready-for-agent" and all(merged(b) for b in ticket["blocked_by"])
 
-    return [t for t in found if t["status"] == "ready-for-agent" and t["id"] not in ledger and unblocked(t)]
+    def requeued(ticket): return ledger[ticket["id"]]["state"] == "ready"
+
+    return [t for t in found if (requeued(t) if t["id"] in ledger else fresh(t))]
 
 
 def move(entry, new_state, reason=None):
     entry["state"] = new_state
     if reason: entry["reason"] = reason
     entry["history"].append({"at": now(), "state": new_state})
+
+
+def card(ticket, entry, out):
+    """Bring the entry's Orca card up to date; a failure prints a line and is retried next time."""
+    status = CARDS.get(entry["state"])
+    comment = f"NEEDS YOU: {entry['reason']}" if entry["state"] == "needs-you" else None
+    if not status or entry.get("card") == [status, comment]:
+        return
+    if not Path(entry["worktree"]).exists():  # Orca's card went with the worktree; never retry
+        entry["card"] = [status, comment]
+        return
+    try:
+        set_card(entry["worktree"], status, comment)
+    except (ValueError, OSError, subprocess.SubprocessError) as error:
+        out.append(f"card for {ticket} not updated: {error}")
+        return
+    entry["card"] = [status, comment]
 
 
 @contextmanager
@@ -205,30 +235,46 @@ def gate_ticket(state, entry):
     return None if passed else "gates failed on the ticket branch"
 
 
-def merge_ticket(state, entry):
-    """Merge into the integration branch; return a needs-you reason, or None when merged."""
+def integration_checkout(state):
     checkout, target = state["integration_checkout"], state["integration_branch"]
     current = git("branch", "--show-current", cwd=checkout)
     if current != target or current in PROTECTED:
         raise ValueError(f"Integration checkout is on {current!r}, not {target!r}; refusing to merge")
+    return checkout
+
+
+def merge_ticket(state, entry):
+    """Merge into the integration branch; return a needs-you reason, or None when merged."""
+    checkout = integration_checkout(state)
     if git("merge", "--no-ff", "--no-edit", entry["branch"], cwd=checkout) is None:
         git("merge", "--abort", cwd=checkout)
         return "merge conflict"
-    git("worktree", "remove", "--force", entry["worktree"], cwd=checkout)
     return None
+
+
+def land(state, ticket, entry, out, hold=False):
+    """Gate, then merge; a failure or a hold leaves the ticket in needs-you. Returns True when merged."""
+    reason = gate_ticket(state, entry) or (HOLD_REASON if hold else None) or merge_ticket(state, entry)
+    if reason:
+        move(entry, "needs-you", reason)
+        out.append(f"{ticket} needs you: {reason}")
+        return False
+    move(entry, "merged")
+    card(ticket, entry, out)  # before the worktree, and with it the Orca card, goes away
+    git("worktree", "remove", "--force", entry["worktree"], cwd=state["integration_checkout"])
+    out.append(f"merged {ticket} into {state['integration_branch']}")
+    return True
+
+
+def blast_radius(state, ticket):
+    checkout = integration_checkout(state)  # ticket files are only trustworthy on the integration branch
+    return next((t["radius"] for t in tickets(checkout, state["feature"]) if t["id"] == ticket), "high")
 
 
 def merge_approved(state, ledger, out):
     for ticket, entry in ledger.items():
-        if entry["state"] != "approved":
-            continue
-        reason = gate_ticket(state, entry) or merge_ticket(state, entry)
-        if reason:
-            move(entry, "needs-you", reason)
-            out.append(f"{ticket} needs you: {reason}")
-        else:
-            move(entry, "merged")
-            out.append(f"merged {ticket} into {state['integration_branch']}")
+        if entry["state"] == "approved":
+            land(state, ticket, entry, out, hold=blast_radius(state, ticket) == "high")
 
 
 def worker_brief(state, ticket, worktree):
@@ -266,7 +312,7 @@ def claim(state, ledger, ticket):
     return entry
 
 
-def launch(state, entry, ticket, out):
+def launch(state, entry, ticket, out, started=None):
     """Launch the worker; park the ticket on launch failure or an unallowed bypass launch."""
     try:
         entry["worker_handle"] = launch_worker(entry["worktree"], worker_brief(state, ticket, entry["worktree"]))
@@ -274,7 +320,7 @@ def launch(state, entry, ticket, out):
         move(entry, "needs-you", f"worker launch failed: {error}")
         out.append(f"{ticket['id']} needs you: worker launch failed")
         return
-    out.append(f"claimed {ticket['id']} on {entry['branch']}")
+    out.append(started or f"claimed {ticket['id']} on {entry['branch']}")
     if state["allow_bypass"] or not worker_in_bypass(entry["worker_handle"]):
         return
     stopped = stop_worker(entry["worker_handle"])
@@ -283,6 +329,13 @@ def launch(state, entry, ticket, out):
     out.append(f"{ticket['id']} needs you: {BYPASS_REASON}; factory paused")
     if not stopped:
         out.append(f"worker {entry['worker_handle']} did not stop; close it in Orca")
+
+
+def relaunch(state, entry, ticket, out):
+    """Start a fresh worker for a requeued ticket in its existing branch and worktree."""
+    entry.update(started_at=now(), turns=0, queue_wait_seconds=0)  # caps count this run only
+    move(entry, "working")
+    launch(state, entry, ticket, out, started=f"relaunched {ticket['id']} in its worktree")
 
 
 def startable(state, ledger):
@@ -305,12 +358,21 @@ def start_tickets(state, ledger, out):
     for ticket in startable(state, ledger):
         if room <= 0 or state["mode"] != mode:  # launch() may pause the factory (bypass)
             break
+        if ticket["id"] in ledger:  # requeued: its branch and worktree already exist
+            room -= 1
+            relaunch(state, ledger[ticket["id"]], ticket, out)
+            continue
         entry = claim(state, ledger, ticket)
         if entry is None:
             out.append(f"{ticket['id']} already claimed")
         else:
             room -= 1
             launch(state, entry, ticket, out)
+
+
+def update_cards(ledger, out):
+    for ticket, entry in ledger.items():
+        card(ticket, entry, out)
 
 
 def in_flight(ledger): return any(e["state"] in ("working", "approved") for e in ledger.values())
@@ -327,7 +389,7 @@ def wave_settled(state, ledger, ticket):
 def final_review(state, ledger, out):
     """Running with tickets started but none left ready, working or approved: one review agent, then pause."""
     if state["mode"] != "running" or state["final_review"] != "not-started" or not ledger: return
-    if in_flight(ledger) or startable(state, ledger) or any(e["state"] == "ready" for e in ledger.values()): return
+    if in_flight(ledger) or startable(state, ledger): return  # startable includes requeued ledger entries
     try:
         state["final_review_handle"] = launch_worker(state["integration_checkout"], final_review_brief(state))
         state["final_review"] = "dispatched"
@@ -359,6 +421,7 @@ def tick(directory):
             update_mode(state, ledger, out)
             state["last_tick"] = now()
         finally:  # keep merges and claims made before any failure
+            update_cards(ledger, out)
             save(directory / "ledger.json", ledger)
             save(directory / "state.json", state)
     print("\n".join(out) or "nothing to do")
@@ -411,7 +474,7 @@ def status(args):
     directory = state_dir(args.project)
     state, ledger = load(directory)
     count = lambda name: sum(e["state"] == name for e in ledger.values())
-    print(f"factory: {state['mode']} · {len(ready_tickets(state, ledger)) + count('ready')} ready"
+    print(f"factory: {state['mode']} · {len(ready_tickets(state, ledger))} ready"
           f" · {count('working')} building · {count('needs-you')} needs you")
     for ticket, entry in sorted(ledger.items()):
         print(" ".join(filter(None, [ticket, entry["state"], entry["branch"], entry["reason"]])))
@@ -444,6 +507,37 @@ def report(args):
         else: move(entry, "needs-you", args.reason or "blocked")
         save(directory / "ledger.json", ledger)
     tick(directory)
+
+
+def approve(args):
+    directory = state_dir(args.project)
+    with tick_lock(directory):
+        state, ledger = load(directory)
+        entry = ledger.get(args.ticket)
+        if not entry or entry["state"] != "needs-you":
+            raise ValueError(f"Ticket {args.ticket} is not waiting for you")
+        if next(s["state"] for s in reversed(entry["history"]) if s["state"] != "needs-you") != "approved":
+            raise ValueError(f"Ticket {args.ticket} was not approved by its worker; requeue it instead")
+        out = []
+        try:
+            merged = land(state, args.ticket, entry, out)
+        finally:
+            update_cards(ledger, out)
+            save(directory / "ledger.json", ledger)
+    print("\n".join(out))
+    return 0 if merged else 1
+
+
+def requeue(args):
+    directory = state_dir(args.project)
+    with tick_lock(directory):
+        _, ledger = load(directory)
+        entry = ledger.get(args.ticket)
+        if not entry or entry["state"] not in REQUEUABLE:
+            raise ValueError(f"Ticket {args.ticket} cannot be requeued (only {', '.join(REQUEUABLE)})")
+        move(entry, "ready")
+        save(directory / "ledger.json", ledger)
+    print(f"requeued {args.ticket}; the next tick relaunches it on {entry['branch']}")
 
 
 def precheck(args):
@@ -498,7 +592,7 @@ def cycle(args):
 def add_parser(sub):
     f = sub.add_parser("factory", help="Unattended per-ticket builds through Orca")
     f.add_argument("action", choices=("install", "uninstall", "status", "tick", "gate", "report", "precheck",
-                                      "pause", "resume", "cycle"))
+                                      "pause", "resume", "cycle", "approve", "requeue"))
     f.add_argument("ticket", nargs="?"); f.add_argument("result", nargs="?")
     f.add_argument("--project", default="."); f.add_argument("--feature")
     f.add_argument("--integration-branch", help="Default: the branch checked out in the project")
@@ -509,7 +603,9 @@ def add_parser(sub):
 
 
 def run(args):
-    actions = {"install": install, "uninstall": uninstall, "status": status, "gate": gate, "report": report, "precheck": precheck,
+    actions = {"install": install, "uninstall": uninstall, "status": status, "gate": gate, "report": report,
+               "precheck": precheck,
                "tick": lambda a: tick(state_dir(a.project)),
-               "pause": pause, "resume": resume, "cycle": cycle}
+               "pause": pause, "resume": resume, "cycle": cycle,
+               "approve": approve, "requeue": requeue}
     return actions[args.action](args) or 0
