@@ -86,7 +86,7 @@ def remove_heartbeat(automation_id):
 def launch_worker(worktree, prompt):
     result = orca("agent", "launch", "--agent", "claude", "--worktree", f"path:{worktree}",
                   "--surface", "terminal", "--prompt", prompt)
-    return result["launch"]["outcome"]["handle"]
+    return result.get("launch", result)["outcome"]["handle"]  # Orca replies {outcome}; older builds wrapped it in launch
 
 
 def worker_alive(handle):

@@ -36,7 +36,8 @@ elif words.startswith('agent launch') and (control / 'launch-fails').exists():
     print(json.dumps({{'ok': False, 'error': {{'code': 'runtime_error', 'message': 'no workspace for path'}}}}))
 elif words.startswith('agent launch'):
     launched = sum(line.startswith('["agent", "launch"') for line in (control / 'log.jsonl').read_text().splitlines())
-    reply(launch={{'outcome': {{'handle': f'term_{{launched}}'}}}})
+    outcome = {{'outcome': {{'kind': 'terminal', 'handle': f'term_{{launched}}'}}}}  # Orca's reply: outcome at the top
+    reply(**({{'launch': outcome}} if (control / 'legacy-launch').exists() else outcome))
 elif words.startswith('terminal read') and (control / 'read-fails').exists(): reply(ok=False)
 elif words.startswith('terminal read'):
     screens = (control / 'bypass', control / f"screen-{{args[args.index('--terminal') + 1]}}", control / 'screen')
@@ -677,6 +678,10 @@ class FactoryTests(unittest.TestCase):
         self.assertIn(f"report 01 approved --detach --project '{self.worktree}'", prompt)
         lock = json.loads((ROOT / 'workflow.lock.json').read_text())
         self.assertEqual(lock['skills']['ew-factory'], 'skills/factory')
+    def test_worker_handle_is_read_from_a_legacy_launch_wrapped_reply(self):
+        (self.orca_dir / 'legacy-launch').touch()
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        self.assertEqual(self.ledger()['01']['worker_handle'], 'term_1')
     # --- ticket 04 ---
     def set_radius(self, line):
         ticket = self.project / '.scratch' / 'demo' / 'issues' / '01-thing.md'
