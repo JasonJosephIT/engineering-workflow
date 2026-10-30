@@ -2,7 +2,7 @@
 status: active
 progress: 100
 next_date: 2026-10-29
-updated: 2026-10-29
+updated: 2026-10-30
 ---
 
 # STATUS
@@ -18,12 +18,13 @@ Merged to main via PR #6 (c398dd6) on 2026-10-29; not yet tagged. Build log:
 
 1. Tag and release v0.3.0 from main (c398dd6).
 3. Remove the `orca-spike` repo entry in Orca's UI (left by the spike; no CLI for it).
-4. First real factory run on a small feature to confirm the unverified Orca facts.
+4. First real factory run (Herculean Iolaus-columns, 2026-10-30) confirmed the `agent launch` reply shape (fixed in v0.3.1); `terminal read` and `terminal show` shapes still to confirm.
 5. Skill routing: spec written (`.scratch/skill-routing/spec.md`); next
    `/ew-matt-to-tickets` for it.
 
 ## Decisions
 
+- 2026-10-30: v0.3.1 fixes the first real factory run (Herculean, Iolaus-columns): real Orca `agent launch` replies `{outcome: {handle}}` with no `launch` wrapper, so every launch started the worker, then the tick crashed with `KeyError: 'launch'` and recorded no handle. `launch_worker` now reads `outcome` at the top and still accepts the old wrapped shape; the fake orca replies in the real shape.
 - 2026-10-29: PR #6 merged to main (merge commit c398dd6) at your request.
 - 2026-10-29: At the turn cap the hook lets exactly one command through: the worker's
   own `workflow.py factory report <NN> blocked` (no shell operators), so a capped ticket
