@@ -28,16 +28,16 @@
   },
   "files": {
     "LICENSE": "1ff535e3e56012b4b3af3a3418968032d4da65977fe302952019e33c5304a7cd",
-    "README.md": "31b78088451bfbf265c527e8d061676a89f49e44e552bca9053c2fbdfb77ec75",
+    "README.md": "b9540eec02081ea0dd4391da19b3256071f1ac3a176019e096a81efbca605a3b",
     "SOURCES.md": "283253f7ce0f8fb0cc9a7eec8de358395ef5e05ec68f55858f1ac30dd814aa0d",
-    "VERSION": "d915cc95d6ca8f47ae297713ed46d4e5c5d99ddd29fc3c61e263bdf305f2b5b0",
+    "VERSION": "79e3f22ca37c7fdf4c29ae3648d6b008c3cb6547260a453409275470919dc674",
     "adapters/agy.md": "5306fc7efe9725375e7967dc95f9d9909127f0f44f8f4bd2ccb6b9c74b5255a9",
     "adapters/claude.md": "ed2b91fa2577c5adab72493f1a860d6302004c4f27f939e5d38820a362a81afc",
     "adapters/codex.md": "87b2d59b19c608e7aa4aa2de93716e42a0a4892dc5c0255b234b6850b6620c13",
     "adapters/gemini.md": "151cd43297b5c1ff784e2975fc96ba516d68439171191607dea83941b4349b92",
     "core/REVIEW_CONTRACT.md": "298ba415ea78f5d8e9ce0ee3e4ce26b2f17cddc1e6f07b6d2d5384e22e2cec47",
     "core/WORKFLOW.md": "fe90eb5554e93725c2789596877dc7cf0c1eb8936064990fdb49657bdf7c40b0",
-    "factory.py": "db355259e7738f7648e12cbf73be75cfc2970514b8d753ea054787be8a906c71",
+    "factory.py": "34b7e4eda45ebff48b0bec0061da62d73618cd1494f13de8727d987a31435ed6",
     "reviews.py": "8c14cdfea96555862ca413fc9d2ecd4b84e6b9a00e99b78c68934e32ef31ea95",
     "skills/autopilot/SKILL.md": "48e03cfbaa4d01fa058f7f21db12ccf239ddaad3b1ed1c04b45b4808320da8cb",
     "skills/deploy-checklist/SKILL.md": "ec7a1df34b92b25c0df89e2d0f16b9f87d36c342a6488612d5ebb4156c00a13d",
@@ -162,7 +162,7 @@
     "workflow.py": "2815832eaaca586fbdb84bca002c5de667a4746b8a55a076513864b62d258ddc"
   },
   "name": "engineering-workflow",
-  "release": "v0.3.0",
+  "release": "v0.3.1",
   "repository": "https://github.com/JasonJosephIT/engineering-workflow.git",
   "schema": 1,
   "skills": {
@@ -210,5 +210,5 @@
     "ew-verification-before-completion": "skills/verification-before-completion",
     "ew-workflow-update": "skills/workflow-update"
   },
-  "version": "0.3.0"
+  "version": "0.3.1"
 }
