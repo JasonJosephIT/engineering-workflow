@@ -93,15 +93,23 @@ repository and rerun install. No startup pull or silent upstream skill updates.
 flags, verify; for the user install or, with `--project`, a project's pin.
 User defaults may advance while projects retain their committed older pins.
 
-## Factory mode (opt-in, Orca)
+## Factory mode (opt-in, Orca or Agent Orchestrator)
 
-After `/to-tickets` is approved, an Orca-hosted loop builds the ready tickets in
+After `/to-tickets` is approved, an Orca- or AO-hosted loop builds the ready tickets in
 parallel into an integration branch. `workflow.py factory tick` owns the
 sequencing, caps, merges and modes. The factory never merges or pushes to
 main, deploys, or publishes issues. A ticket that needs you shows on its Orca
-card.
+card, or (AO) arrives as a NEEDS YOU message to the project's AO orchestrator session.
 
-Needs the Orca CLI, the repo registered in Orca, an integration branch that is
+With `--runner ao`, workers are `claude-code` sessions that AO spawns on each
+ticket's claim branch, in worktrees AO owns. A launchd job (no agent session)
+runs `factory precheck && factory tick` hourly. The factory reuses a live AO
+orchestrator for the project, or spawns one, and sends it each NEEDS YOU; it only
+relays. Needs the `ao` CLI, the repo registered as an AO project and macOS. The
+factory refuses a worker when the AO project's permission mode is
+`bypass-permissions` unless installed with `--allow-bypass`.
+
+The Orca runner needs the Orca CLI, the repo registered in Orca, an integration branch that is
 not main/master, and a committed `.engineering-workflow/gates.sh` whose last
 line is `GATES: PASS`.
 
@@ -113,7 +121,7 @@ only safety net and it is not a sandbox: a worker can still edit any file it can
 reach. Use --allow-bypass only for repos and machines you trust the agent with.
 
 ```sh
-python3 -B workflow.py factory install --feature NAME [--integration-branch BRANCH] [--paused] [--allow-bypass]
+python3 -B workflow.py factory install --feature NAME [--runner orca|ao] [--integration-branch BRANCH] [--paused] [--allow-bypass]
 python3 -B workflow.py factory status | set SETTING VALUE | pause [--now] | resume
 python3 -B workflow.py factory cycle | approve TICKET | requeue TICKET | uninstall
 ```

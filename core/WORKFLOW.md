@@ -86,14 +86,16 @@ security-focused review. Do not pretend a missing slash command exists.
 After the human approves to-tickets output, offer four choices: build here (SDD,
 above); install and run (`workflow.py factory install --feature <slug>`); install
 paused (`--paused`, start later with `factory resume`); or one cycle (install
-`--paused`, then `factory cycle` for one wave). The factory needs Orca, a committed
-gate script and an integration branch that is not main/master. Pass
-`--allow-bypass` only when the human accepts Orca's permission-bypass launch.
-An hourly Orca heartbeat runs `factory tick`; each ticket gets its own worktree and
+`--paused`, then `factory cycle` for one wave). The factory needs a runner (Orca by
+default, or Agent Orchestrator with `--runner ao`), a committed gate script and an
+integration branch that is not main/master. Pass `--allow-bypass` only when the
+human accepts the runner's permission-bypass launch. An hourly heartbeat (an Orca
+automation, or a launchd job for AO) runs `factory tick`; each ticket gets its own worktree and
 worker following the ew-factory worker brief, and a final review runs when the
 feature is done. The factory merges only into the integration branch; it never
 merges to main, pushes to main, deploys or publishes issues. Tickets that need the
-human show NEEDS YOU on their Orca cards; once `stop_if_waiting` (5) of them are
+human show NEEDS YOU on their Orca cards, or reach the human through the project's AO
+orchestrator session; once `stop_if_waiting` (5) of them are
 needs-you or capped, the factory holds and starts nothing new. Use `factory status`
 for state and the last wave's summary, `factory set <setting> <value>` to change
 concurrency, build slots and caps, `factory pause` / `resume` to control it and

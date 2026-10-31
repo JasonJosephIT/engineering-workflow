@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
+import plistlib
 import shlex
 import signal
 import subprocess
@@ -1347,6 +1348,282 @@ class FactoryTests(unittest.TestCase):
         self.assertEqual(json.loads(started['hookSpecificOutput']['additionalContext'])['factory'], line)
         (self.state_dir / 'ledger.json').write_text('not json')
         self.assertEqual(self.session(self.project)['factory'], 'unreadable')
+
+
+FAKE_AO = f"""#!{sys.executable}
+import json, os, re, subprocess, sys
+from pathlib import Path
+control = Path(os.environ['FAKE_AO_DIR'])
+project = os.environ['FAKE_AO_PROJECT']
+args = sys.argv[1:]
+with open(control / 'log.jsonl', 'a') as log: log.write(json.dumps(args) + '\\n')
+store = control / 'sessions.json'
+sessions = json.loads(store.read_text()) if store.exists() else {{}}
+def save(): store.write_text(json.dumps(sessions))
+def out(value): print(json.dumps(value))
+def fail(message): print(message, file=sys.stderr); sys.exit(1)
+def flag(name): return args[args.index(name) + 1] if name in args else None
+def git(*a, cwd=project): return subprocess.run(['git', *a], cwd=cwd, capture_output=True, text=True)
+words = [a for a in args if not a.startswith('-')]
+if args[:2] == ['project', 'ls']:
+    out({{'projects': [] if (control / 'unregistered').exists() else [{{'id': 'demo', 'name': 'demo'}}]}})
+elif args[:2] == ['project', 'get']:
+    mode = 'bypass-permissions' if (control / 'bypass').exists() else 'auto'
+    out({{'status': 'ok', 'project': {{'id': 'demo', 'path': project,
+         'config': {{'agentConfig': {{'permissions': mode}}, 'worker': {{'agentConfig': {{}}}}}}}}}})
+elif args[:1] == ['spawn']:
+    if (control / 'spawn-fails').exists(): fail('spawn demo: workspace: branch is checked out elsewhere')
+    sid = f'demo-{{len(sessions) + 1}}'
+    kind, branch, path = flag('--kind') or 'worker', flag('--branch'), None
+    if kind == 'worker':
+        path = str(control / 'worktrees' / sid)
+        if git('worktree', 'add', path, branch).returncode: fail('spawn demo: could not create worktree')
+    sessions[sid] = {{'kind': kind, 'branch': branch, 'path': path, 'name': flag('--name'), 'dead': False}}
+    save(); print(f'spawned session {{sid}} "{{flag("--name")}}" (idle) [prompt 0 B, system 1 B]')
+elif args[:2] == ['session', 'get']:
+    s = sessions.get(args[2])
+    if not s: fail('session not found')
+    out({{'session': {{'id': args[2], 'projectId': 'demo', 'kind': s['kind'], 'isTerminated': s['dead']}}}})
+elif args[:2] == ['session', 'kill']:
+    s = sessions[args[2]]; s['dead'] = True; save()
+    if s['path'] and Path(s['path']).exists() and not git('status', '--porcelain', cwd=s['path']).stdout.strip():
+        git('worktree', 'remove', '--force', s['path'])  # AO drops a clean workspace, keeps a dirty one
+    print(f'session {{args[2]}} killed')
+elif args[:2] == ['session', 'restore']:
+    s = sessions[args[2]]
+    if (control / 'restore-fails').exists(): fail('restore failed')
+    if s['path'] and not Path(s['path']).exists() and git('worktree', 'add', s['path'], s['branch']).returncode:
+        fail('restore: branch gone')
+    s['dead'] = False; save(); print('restored')
+elif args[:1] == ['send']:
+    if (control / 'send-fails').exists(): fail('send failed')
+    print('sent')
+elif args[:2] == ['orchestrator', 'ls']:
+    out({{'data': [{{'id': k, 'projectId': 'demo', 'isTerminated': v['dead']}}
+                   for k, v in sessions.items() if v['kind'] == 'orchestrator']}})
+else: fail('unknown command ' + ' '.join(args))
+"""
+FAKE_LAUNCHCTL = f"""#!{sys.executable}
+import json, os, sys
+from pathlib import Path
+with open(Path(os.environ['FAKE_AO_DIR']) / 'launchctl.jsonl', 'a') as log: log.write(json.dumps(sys.argv[1:]) + '\\n')
+"""
+
+
+class AoRunnerTests(unittest.TestCase):
+    """The same factory with --runner ao: AO sessions and worktrees, a launchd heartbeat, an orchestrator relay.
+    Borrows FactoryTests' fixture and helpers, not its tests."""
+    tearDown, git, cli, orca_calls = FactoryTests.tearDown, FactoryTests.git, FactoryTests.cli, FactoryTests.orca_calls
+    ledger, state = FactoryTests.ledger, FactoryTests.state
+
+    def setUp(self):
+        FactoryTests.setUp(self)
+        self.ao_dir = self.base / 'ao'; self.ao_dir.mkdir()
+        self.home = self.base / 'home'; self.home.mkdir()
+        for name, text in (('ao', FAKE_AO), ('launchctl', FAKE_LAUNCHCTL)):
+            tool = self.fakebin / name; tool.write_text(text); tool.chmod(0o755)
+        self.env.update(FAKE_AO_DIR=str(self.ao_dir), FAKE_AO_PROJECT=str(self.project), HOME=str(self.home),
+                        AO_SESSION_ID='caller-1')
+        self.env.pop('AO_CLI_COMMAND', None)
+
+    def ao_calls(self):
+        log = self.ao_dir / 'log.jsonl'
+        return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+
+    def sends(self, session=None):
+        return [c[c.index('--message') + 1] for c in self.ao_calls()
+                if c[:1] == ['send'] and (session is None or c[c.index('--session') + 1] == session)]
+
+    def install_ao(self, *extra, ok=True):
+        return self.cli('install', '--feature', 'demo', '--runner', 'ao', *extra, ok=ok)
+
+    def ticket_tree(self, ticket='01'):
+        return Path(self.ledger()[ticket]['worktree'])
+
+    def test_ao_one_ticket_goes_from_ready_to_merged_without_orca(self):
+        main_before = self.git('rev-parse', 'main')
+        self.install_ao()
+        state = self.state()
+        label = 'com.engineering-workflow.factory.demo.demo'
+        self.assertEqual((state['runner'], state['ao_project'], state['automation_id'], state['relay_handle']),
+                         ('ao', 'demo', label, 'ao:demo-1'))
+        plist = plistlib.loads((self.home / 'Library' / 'LaunchAgents' / f'{label}.plist').read_bytes())
+        self.assertEqual((plist['Label'], plist['StartInterval']), (label, 3600))
+        script = plist['ProgramArguments'][-1]
+        self.assertIn(f"precheck --project '{self.project}' && ", script)
+        self.assertTrue(script.endswith(f"tick --project '{self.project}'"), script)
+        launchctl = [json.loads(l) for l in (self.ao_dir / 'launchctl.jsonl').read_text().splitlines()]
+        self.assertEqual(launchctl[0][:2], ['bootstrap', f'gui/{os.getuid()}'])
+        relay = [c for c in self.ao_calls() if c[:1] == ['spawn']][0]
+        self.assertEqual(relay[relay.index('--kind') + 1], 'orchestrator')
+        self.assertIn('Never edit files, merge, push', relay[relay.index('--prompt') + 1])
+
+        self.cli('tick')
+        entry = self.ledger()['01']
+        self.assertEqual((entry['state'], entry['branch'], entry['worker_handle']),
+                         ('working', 'factory/demo-01', 'ao:demo-2'))
+        tree = self.ticket_tree()
+        self.assertEqual(tree, self.ao_dir / 'worktrees' / 'demo-2')
+        self.assertEqual(self.git('branch', '--show-current', cwd=tree), 'factory/demo-01')
+        marker = json.loads((tree / '.engineering-workflow-state' / 'factory-ticket.json').read_text())
+        self.assertEqual(marker, {'ticket': '01', 'state_dir': str(self.state_dir)})
+        spawn = [c for c in self.ao_calls() if c[:1] == ['spawn']][1]
+        self.assertEqual((spawn[spawn.index('--branch') + 1], spawn[spawn.index('--harness') + 1]),
+                         ('factory/demo-01', 'claude-code'))
+        self.assertNotIn('--prompt', spawn)  # the brief goes in only after the marker exists
+        brief = self.sends('demo-2')
+        self.assertEqual(len(brief), 1)
+        self.assertIn('Use the ew-factory skill (worker brief)', brief[0])
+        self.assertIn(f"--project {shlex.quote(str(tree))}", brief[0])
+
+        (tree / 'thing.txt').write_text('built\n')
+        self.git('add', '-A', cwd=tree); self.git('commit', '-qm', 'Build thing', cwd=tree)
+        self.cli('report', '01', 'approved', '--slowed-by', 'nothing', project=tree)
+        self.assertEqual(self.ledger()['01']['state'], 'merged')
+        self.assertEqual(self.git('show', 'build/demo:thing.txt'), 'built')
+        self.assertFalse(tree.exists())
+        self.assertIn(['session', 'kill', 'demo-2'], self.ao_calls())
+        self.assertEqual(self.git('rev-parse', 'main'), main_before)
+        self.assertEqual(self.orca_calls(), [])
+
+    def test_ao_calls_drop_the_calling_sessions_identity(self):
+        self.env['FAKE_AO_DIR'] = str(self.ao_dir)
+        probe = self.fakebin / 'ao'
+        probe.write_text(FAKE_AO.replace("args = sys.argv[1:]",
+                                         "args = sys.argv[1:]\nassert 'AO_SESSION_ID' not in os.environ, 'leaked'"))
+        self.install_ao(); self.cli('tick')
+        self.assertEqual(self.ledger()['01']['state'], 'working')
+
+    def test_ao_install_refuses_without_ao_unregistered_or_bad_runner(self):
+        no_ao = {**self.env, 'AO_CLI_COMMAND': 'ao-not-installed-here'}
+        self.assertIn('AO CLI not found',
+                      self.cli('install', '--feature', 'demo', '--runner', 'ao', ok=False, env=no_ao).stderr)
+        (self.ao_dir / 'unregistered').touch()
+        self.assertIn('This repo is not registered in AO', self.install_ao(ok=False).stderr)
+        self.assertFalse((self.state_dir / 'state.json').exists())
+        self.assertFalse((self.ao_dir / 'launchctl.jsonl').exists())
+        self.assertIn('invalid choice', self.cli('install', '--feature', 'demo', '--runner', 'x', ok=False).stderr)
+
+    def test_ao_install_reuses_a_live_project_orchestrator_as_the_relay(self):
+        (self.ao_dir / 'sessions.json').write_text(json.dumps(
+            {'demo-1': {'kind': 'orchestrator', 'branch': None, 'path': None, 'name': 'mine', 'dead': False}}))
+        self.install_ao()
+        self.assertEqual(self.state()['relay_handle'], 'ao:demo-1')
+        self.assertFalse(self.state()['relay_spawned'])
+        self.assertEqual([c for c in self.ao_calls() if c[:1] == ['spawn']], [])
+        self.assertIn('You relay the engineering-workflow factory', self.sends('demo-1')[0])
+
+    def test_ao_needs_you_is_relayed_once_to_the_orchestrator(self):
+        self.install_ao(); self.cli('tick')
+        tree = self.ticket_tree()
+        self.cli('report', '01', 'blocked', '--reason', 'needs an API decision', '--slowed-by', 'spec', project=tree)
+        self.cli('tick')
+        relayed = [m for m in self.sends('demo-1') if 'NEEDS YOU' in m]
+        self.assertEqual(relayed, ['Ticket 01 NEEDS YOU: needs an API decision (branch factory/demo-01)'])
+
+    def test_ao_relay_failure_is_reported_and_retried_next_tick(self):
+        self.install_ao(); self.cli('tick')
+        (self.ao_dir / 'send-fails').touch()
+        out = self.cli('report', '01', 'blocked', '--reason', 'stuck', project=self.ticket_tree()).stdout
+        self.assertIn('card for 01 not updated', out)
+        (self.ao_dir / 'send-fails').unlink()
+        self.cli('tick'); self.cli('tick')
+        self.assertEqual(len([m for m in self.sends('demo-1') if 'NEEDS YOU' in m]), 2)  # the failed try, one retry
+
+    def test_ao_bypass_project_stops_the_worker_and_pauses(self):
+        (self.ao_dir / 'bypass').touch()
+        self.install_ao(); self.cli('tick')
+        entry = self.ledger()['01']
+        self.assertEqual((entry['state'], self.state()['mode']), ('needs-you', 'paused'))
+        self.assertTrue(entry['reason'].startswith('AO runs this project'), entry['reason'])
+        self.assertIn(['session', 'kill', 'demo-2'], self.ao_calls())
+
+    def test_ao_allow_bypass_keeps_the_worker(self):
+        (self.ao_dir / 'bypass').touch()
+        self.install_ao('--allow-bypass'); self.cli('tick')
+        self.assertEqual(self.ledger()['01']['state'], 'working')
+
+    def test_ao_spawn_failure_parks_the_ticket(self):
+        self.install_ao(); (self.ao_dir / 'spawn-fails').touch()
+        out = self.cli('tick').stdout
+        entry = self.ledger()['01']
+        self.assertEqual(entry['state'], 'needs-you')
+        self.assertIn('branch is checked out elsewhere', entry['reason'])
+        self.assertIn('01 needs you', out)
+
+    def test_ao_dead_session_is_interrupted_and_requeue_restores_it_on_its_branch(self):
+        self.install_ao(); self.cli('tick')
+        tree = self.ticket_tree()
+        (tree / 'half.txt').write_text('half\n')
+        self.git('add', '-A', cwd=tree); self.git('commit', '-qm', 'half', cwd=tree)
+        self.cli('pause', '--now')
+        self.assertFalse(tree.exists())  # a clean AO workspace goes with its session; the branch keeps the work
+        self.assertEqual(self.ledger()['01']['state'], 'interrupted')
+        self.cli('requeue', '01')
+        self.assertIn('relaunched 01 in its worktree', self.cli('resume').stdout)
+        entry = self.ledger()['01']
+        self.assertEqual((entry['state'], entry['worker_handle']), ('working', 'ao:demo-2'))
+        self.assertIn(['session', 'restore', 'demo-2'], self.ao_calls())
+        self.assertEqual(self.git('show', 'HEAD:half.txt', cwd=tree), 'half')
+        self.assertTrue((tree / '.engineering-workflow-state' / 'factory-ticket.json').is_file())
+        self.assertEqual(len([m for m in self.sends('demo-2') if 'worker brief' in m]), 2)
+
+    def test_ao_failed_restore_sends_the_ticket_back_to_needs_you(self):
+        self.install_ao(); self.cli('tick'); self.cli('pause', '--now'); self.cli('requeue', '01')
+        (self.ao_dir / 'restore-fails').touch()
+        self.assertIn('01 needs you: worktree missing', self.cli('resume').stdout)
+
+    def test_ao_ledger_cannot_point_a_merge_at_another_worktree(self):
+        self.install_ao(); self.cli('tick')
+        tree = self.ticket_tree()
+        self.build_in(tree)
+        data = self.ledger(); data['01']['worktree'] = str(self.project)
+        (self.state_dir / 'ledger.json').write_text(json.dumps(data))
+        self.cli('report', '01', 'approved', '--slowed-by', 'nothing', project=tree)
+        entry = self.ledger()['01']
+        self.assertEqual((entry['state'], entry['reason']), ('needs-you', 'ledger entry failed validation'))
+
+    def build_in(self, tree):
+        (tree / 'thing.txt').write_text('built\n')
+        self.git('add', '-A', cwd=tree); self.git('commit', '-qm', 'Build', cwd=tree)
+
+    def test_ao_worktree_without_its_marker_is_still_a_ticket_worktree(self):
+        self.install_ao(); self.cli('tick')
+        tree = self.ticket_tree()
+        (tree / '.engineering-workflow-state' / 'factory-ticket.json').unlink()
+        self.assertIn('Run this from the integration checkout', self.cli('pause', project=tree, ok=False).stderr)
+
+    def test_ao_final_review_runs_on_a_review_branch_at_the_integration_tip(self):
+        self.install_ao(); self.cli('tick')
+        self.build_in(self.ticket_tree())
+        self.cli('report', '01', 'approved', '--slowed-by', 'nothing', project=self.ticket_tree())
+        state = self.state()
+        self.assertEqual((state['final_review'], state['final_review_handle'], state['mode']),
+                         ('dispatched', 'ao:demo-3', 'paused'))
+        review = [c for c in self.ao_calls() if c[:1] == ['spawn']][-1]
+        self.assertEqual(review[review.index('--branch') + 1], 'factory/demo-final-review')
+        self.assertEqual(self.git('rev-parse', 'factory/demo-final-review'), self.git('rev-parse', 'build/demo'))
+        prompt = review[review.index('--prompt') + 1]
+        self.assertIn('Use the ew-factory skill (final review brief) for demo on build/demo', prompt)
+        self.assertIn(str(self.state_dir / 'final-review.md'), prompt)
+        self.cli('uninstall')
+        self.assertIn(['session', 'kill', 'demo-3'], self.ao_calls())
+
+    def test_ao_uninstall_boots_out_the_heartbeat_and_kills_its_own_relay(self):
+        self.install_ao(); self.cli('tick'); self.cli('uninstall')
+        self.assertNotIn(['session', 'kill', 'demo-3'], self.ao_calls())  # no final review was started
+        label = 'com.engineering-workflow.factory.demo.demo'
+        launchctl = [json.loads(l) for l in (self.ao_dir / 'launchctl.jsonl').read_text().splitlines()]
+        self.assertEqual(launchctl[-1], ['bootout', f'gui/{os.getuid()}/{label}'])
+        self.assertFalse((self.home / 'Library' / 'LaunchAgents' / f'{label}.plist').exists())
+        self.assertIn(['session', 'kill', 'demo-1'], self.ao_calls())
+        self.assertIn(['session', 'kill', 'demo-2'], self.ao_calls())
+        self.assertFalse((self.state_dir / 'state.json').exists())
+
+    def test_orca_installs_keep_their_old_shape(self):
+        self.cli('install', '--feature', 'demo')
+        self.assertEqual(self.state().get('runner', 'orca'), 'orca')
+        self.assertEqual(self.ao_calls(), [])
 
 
 if __name__ == '__main__':
