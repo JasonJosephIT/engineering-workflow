@@ -406,6 +406,10 @@ def card(state, ticket, entry, out):
         return
     try:
         if ao_runner:
+            if is_ao(entry.get("worker_handle")):  # the board card: its title says NEEDS YOU while it waits
+                title = f"factory {state['feature']} {ticket}"
+                ao("session", "rename", entry["worker_handle"][3:], f"NEEDS YOU: {title}" if comment else title,
+                   reply=False)
             if comment: relay(state, f"Ticket {ticket} {comment} (branch {entry['branch']})")
         else: set_card(entry["worktree"], status, comment)
     except (ValueError, OSError, subprocess.SubprocessError) as error:
@@ -548,6 +552,8 @@ def land(state, ticket, entry, out, hold=None):
         out.append(f"worker {entry['worker_handle']} did not stop; {close_hint(entry['worker_handle'])}")
     try: git("worktree", "remove", "--force", entry["worktree"], cwd=state["integration_checkout"], timeout=300)
     except subprocess.TimeoutExpired: out.append(f"worktree for {ticket} not removed: git timed out")
+    if state.get("runner") == "ao":  # merged work lives on the integration branch; drop the local claim branch
+        git("branch", "-d", entry["branch"], cwd=state["integration_checkout"])
     out.append(f"merged {ticket} into {state['integration_branch']}")
     return True
 
@@ -883,6 +889,8 @@ def uninstall(args):
         review = state.get("final_review_handle")
         if is_ao(review) and not stop({"worker_handle": review}):
             out.append(f"final review {review} did not stop; {close_hint(review)}")
+        if state.get("runner") == "ao":
+            git("branch", "-D", f"factory/{state['feature']}-final-review", cwd=state["integration_checkout"])
         kept = directory / f"ledger-{state['feature']}-{datetime.now(timezone.utc):%Y%m%dT%H%M%S}.json"
         save(kept, ledger)  # a new install starts with an empty ledger
         (directory / "ledger.json").unlink(missing_ok=True)

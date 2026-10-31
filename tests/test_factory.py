@@ -1395,6 +1395,8 @@ elif args[:2] == ['session', 'restore']:
     if s['path'] and not Path(s['path']).exists() and git('worktree', 'add', s['path'], s['branch']).returncode:
         fail('restore: branch gone')
     s['dead'] = False; save(); print('restored')
+elif args[:2] == ['session', 'rename']:
+    sessions[args[2]]['name'] = args[3]; save(); print('renamed')
 elif args[:1] == ['send']:
     if (control / 'send-fails').exists(): fail('send failed')
     print('sent')
@@ -1483,6 +1485,7 @@ class AoRunnerTests(unittest.TestCase):
         self.assertEqual(self.git('show', 'build/demo:thing.txt'), 'built')
         self.assertFalse(tree.exists())
         self.assertIn(['session', 'kill', 'demo-2'], self.ao_calls())
+        self.assertEqual(self.git('branch', '--list', 'factory/demo-01'), '')  # merged claim branch removed
         self.assertEqual(self.git('rev-parse', 'main'), main_before)
         self.assertEqual(self.orca_calls(), [])
 
@@ -1520,6 +1523,12 @@ class AoRunnerTests(unittest.TestCase):
         self.cli('tick')
         relayed = [m for m in self.sends('demo-1') if 'NEEDS YOU' in m]
         self.assertEqual(relayed, ['Ticket 01 NEEDS YOU: needs an API decision (branch factory/demo-01)'])
+        self.assertEqual(self.title('demo-2'), 'NEEDS YOU: factory demo 01')  # the board card says so
+        self.cli('requeue', '01'); self.cli('tick')
+        self.assertEqual(self.title('demo-2'), 'factory demo 01')  # back to plain once it builds again
+
+    def title(self, session):
+        return json.loads((self.ao_dir / 'sessions.json').read_text())[session]['name']
 
     def test_ao_relay_failure_is_reported_and_retried_next_tick(self):
         self.install_ao(); self.cli('tick')
@@ -1608,6 +1617,7 @@ class AoRunnerTests(unittest.TestCase):
         self.assertIn(str(self.state_dir / 'final-review.md'), prompt)
         self.cli('uninstall')
         self.assertIn(['session', 'kill', 'demo-3'], self.ao_calls())
+        self.assertEqual(self.git('branch', '--list', 'factory/demo-final-review'), '')
 
     def test_ao_uninstall_boots_out_the_heartbeat_and_kills_its_own_relay(self):
         self.install_ao(); self.cli('tick'); self.cli('uninstall')

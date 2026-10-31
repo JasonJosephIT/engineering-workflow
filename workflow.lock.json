@@ -28,7 +28,7 @@
   },
   "files": {
     "LICENSE": "1ff535e3e56012b4b3af3a3418968032d4da65977fe302952019e33c5304a7cd",
-    "README.md": "0af5a1cf9a83fb30eae6d81c2473c12063b4a3f137551c35966194738554bbf5",
+    "README.md": "13058a8de22638b309f3ce92c536d540d215cf39ffa96645f83d159a9e2e079a",
     "SOURCES.md": "283253f7ce0f8fb0cc9a7eec8de358395ef5e05ec68f55858f1ac30dd814aa0d",
     "VERSION": "79e3f22ca37c7fdf4c29ae3648d6b008c3cb6547260a453409275470919dc674",
     "adapters/agy.md": "5306fc7efe9725375e7967dc95f9d9909127f0f44f8f4bd2ccb6b9c74b5255a9",
@@ -37,7 +37,7 @@
     "adapters/gemini.md": "151cd43297b5c1ff784e2975fc96ba516d68439171191607dea83941b4349b92",
     "core/REVIEW_CONTRACT.md": "298ba415ea78f5d8e9ce0ee3e4ce26b2f17cddc1e6f07b6d2d5384e22e2cec47",
     "core/WORKFLOW.md": "241b497f7779e2ac3b09f7732f329cee4ca8fdac856ce846a56ea75bf3b8b081",
-    "factory.py": "28dcdad52a6360a33c10341b3a1d1fda9e403b833635075b82491038e7a5927b",
+    "factory.py": "e90700dbc9c413e56e6762a971d8b6d625d2411dc99fc3e2ff74858bd39b3534",
     "reviews.py": "8c14cdfea96555862ca413fc9d2ecd4b84e6b9a00e99b78c68934e32ef31ea95",
     "skills/autopilot/SKILL.md": "48e03cfbaa4d01fa058f7f21db12ccf239ddaad3b1ed1c04b45b4808320da8cb",
     "skills/deploy-checklist/SKILL.md": "ec7a1df34b92b25c0df89e2d0f16b9f87d36c342a6488612d5ebb4156c00a13d",
