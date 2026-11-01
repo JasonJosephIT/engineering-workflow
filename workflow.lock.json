@@ -28,21 +28,21 @@
   },
   "files": {
     "LICENSE": "1ff535e3e56012b4b3af3a3418968032d4da65977fe302952019e33c5304a7cd",
-    "README.md": "b9540eec02081ea0dd4391da19b3256071f1ac3a176019e096a81efbca605a3b",
+    "README.md": "b34f9921a9746e9ec5b499434e14762f86b8c8b3dce09edef9420521837f9c68",
     "SOURCES.md": "283253f7ce0f8fb0cc9a7eec8de358395ef5e05ec68f55858f1ac30dd814aa0d",
-    "VERSION": "79e3f22ca37c7fdf4c29ae3648d6b008c3cb6547260a453409275470919dc674",
+    "VERSION": "40b8eb4000a913a7791090535f291d3d369874162a89ef3c9e3d4e887a1b9e79",
     "adapters/agy.md": "5306fc7efe9725375e7967dc95f9d9909127f0f44f8f4bd2ccb6b9c74b5255a9",
     "adapters/claude.md": "ed2b91fa2577c5adab72493f1a860d6302004c4f27f939e5d38820a362a81afc",
     "adapters/codex.md": "87b2d59b19c608e7aa4aa2de93716e42a0a4892dc5c0255b234b6850b6620c13",
     "adapters/gemini.md": "151cd43297b5c1ff784e2975fc96ba516d68439171191607dea83941b4349b92",
     "core/REVIEW_CONTRACT.md": "298ba415ea78f5d8e9ce0ee3e4ce26b2f17cddc1e6f07b6d2d5384e22e2cec47",
-    "core/WORKFLOW.md": "fe90eb5554e93725c2789596877dc7cf0c1eb8936064990fdb49657bdf7c40b0",
-    "factory.py": "34b7e4eda45ebff48b0bec0061da62d73618cd1494f13de8727d987a31435ed6",
+    "core/WORKFLOW.md": "241b497f7779e2ac3b09f7732f329cee4ca8fdac856ce846a56ea75bf3b8b081",
+    "factory.py": "e90700dbc9c413e56e6762a971d8b6d625d2411dc99fc3e2ff74858bd39b3534",
     "reviews.py": "8c14cdfea96555862ca413fc9d2ecd4b84e6b9a00e99b78c68934e32ef31ea95",
     "skills/autopilot/SKILL.md": "48e03cfbaa4d01fa058f7f21db12ccf239ddaad3b1ed1c04b45b4808320da8cb",
     "skills/deploy-checklist/SKILL.md": "ec7a1df34b92b25c0df89e2d0f16b9f87d36c342a6488612d5ebb4156c00a13d",
     "skills/docs-health/SKILL.md": "8b5174f9c7eb096b374fccda48fff5d4d12efd958d333ed41c03b7548fc283db",
-    "skills/factory/SKILL.md": "f2b5b61fa6f9d1aa44f549915abc6862aa71108f847a9df9413921c54d119d8c",
+    "skills/factory/SKILL.md": "e01dd82234e89981ad011e672156af0d200f8a56f13a478cb1199cb1b03baa11",
     "skills/finishing-a-development-branch/SKILL.md": "8a672ffbf34feaabeb414c19fd705ed36f3310187e1605a3f9e45eacd150d5be",
     "skills/implementation-review/SKILL.md": "61fcf765a45febe7352e5539fa74784b2f043a07bc3727bca975012352bd4016",
     "skills/incident-response/SKILL.md": "e78583fd64ce4559a04c5a178867ff2d34807519f7d37149d37302d095856d78",
@@ -162,7 +162,7 @@
     "workflow.py": "2815832eaaca586fbdb84bca002c5de667a4746b8a55a076513864b62d258ddc"
   },
   "name": "engineering-workflow",
-  "release": "v0.3.1",
+  "release": "v0.4.0",
   "repository": "https://github.com/JasonJosephIT/engineering-workflow.git",
   "schema": 1,
   "skills": {
@@ -210,5 +210,5 @@
     "ew-verification-before-completion": "skills/verification-before-completion",
     "ew-workflow-update": "skills/workflow-update"
   },
-  "version": "0.3.1"
+  "version": "0.4.0"
 }
