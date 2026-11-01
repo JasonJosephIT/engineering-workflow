@@ -2,7 +2,7 @@
 status: active
 progress: 100
 next_date: 2026-10-29
-updated: 2026-10-30
+updated: 2026-10-31
 ---
 
 # STATUS
@@ -16,6 +16,8 @@ Merged to main via PR #6 (c398dd6) on 2026-10-29; not yet tagged. Build log:
 
 ## Next
 
+0. v0.4.0 (AO runner, PR #9) released 2026-10-31. New factories use `--runner ao`; the two
+   live Orca factories (Aristocrat course-factory-mvp, Herculean iolaus-columns) finish on Orca.
 1. Tag and release v0.3.0 from main (c398dd6).
 3. Remove the `orca-spike` repo entry in Orca's UI (left by the spike; no CLI for it).
 4. First real factory run (Herculean Iolaus-columns, 2026-10-30) confirmed the `agent launch` reply shape (fixed in v0.3.1); `terminal read` and `terminal show` shapes still to confirm.
@@ -24,6 +26,14 @@ Merged to main via PR #6 (c398dd6) on 2026-10-29; not yet tagged. Build log:
 
 ## Decisions
 
+- 2026-10-31: Factory gets `--runner ao` (Agent Orchestrator) beside Orca, default still `orca`.
+  AO owns ticket worktrees (`ao spawn --branch` on the claim branch, then the brief via `ao send`
+  once the marker is written); a launchd job runs `precheck && tick` hourly (no agent session);
+  NEEDS YOU goes by `ao send` to the project's AO orchestrator, reused or spawned, which only relays.
+  AO handles are `ao:<session>`, so Orca ledgers are untouched. Dry run on Chazak (2 tickets):
+  both merged, final review ran on `factory/<feature>-final-review`, relay answered, uninstall
+  removed the heartbeat. Found and fixed: brief said `main` (now default branch); AO workers
+  can't use subagents, so the reviewer pass may run inline; AO's PR workflow is ruled out in the brief.
 - 2026-10-30: v0.3.1 fixes the first real factory run (Herculean, Iolaus-columns): real Orca `agent launch` replies `{outcome: {handle}}` with no `launch` wrapper, so every launch started the worker, then the tick crashed with `KeyError: 'launch'` and recorded no handle. `launch_worker` now reads `outcome` at the top and still accepts the old wrapped shape; the fake orca replies in the real shape.
 - 2026-10-29: PR #6 merged to main (merge commit c398dd6) at your request.
 - 2026-10-29: At the turn cap the hook lets exactly one command through: the worker's

@@ -1,6 +1,6 @@
 # Engineering workflow
 
-One versioned process for Claude Code, Codex, Gemini CLI and Antigravity. Version **0.3.1**.
+One versioned process for Claude Code, Codex, Gemini CLI and Antigravity. Version **0.4.0**.
 Matt Pocock planning/TDD/review + personal SDD + Ponytail, with Claude Guard,
 portable Autopilot and docs-health. Optional Headroom startup support. No Runpod,
 entertainment, or required TypeSafe dependency.
@@ -11,9 +11,9 @@ Requires Git, Python **3.11+**, and access to this private repository. Clone a
 release, verify it, explicitly select the platform, then install:
 
 ```sh
-git clone --branch v0.3.1 https://github.com/JasonJosephIT/engineering-workflow.git
+git clone --branch v0.4.0 https://github.com/JasonJosephIT/engineering-workflow.git
 cd engineering-workflow
-python3 -B workflow.py verify --expected 0.3.1
+python3 -B workflow.py verify --expected 0.4.0
 python3 -B workflow.py install --scope user --platform codex --dry-run
 python3 -B workflow.py install --scope user --platform codex
 ```
@@ -93,15 +93,26 @@ repository and rerun install. No startup pull or silent upstream skill updates.
 flags, verify; for the user install or, with `--project`, a project's pin.
 User defaults may advance while projects retain their committed older pins.
 
-## Factory mode (opt-in, Orca)
+## Factory mode (opt-in, Orca or Agent Orchestrator)
 
-After `/to-tickets` is approved, an Orca-hosted loop builds the ready tickets in
+After `/to-tickets` is approved, an Orca- or AO-hosted loop builds the ready tickets in
 parallel into an integration branch. `workflow.py factory tick` owns the
 sequencing, caps, merges and modes. The factory never merges or pushes to
 main, deploys, or publishes issues. A ticket that needs you shows on its Orca
-card.
+card, or (AO) arrives as a NEEDS YOU message to the project's AO orchestrator session.
 
-Needs the Orca CLI, the repo registered in Orca, an integration branch that is
+With `--runner ao`, workers are `claude-code` sessions that AO spawns on each
+ticket's claim branch, in worktrees AO owns. A launchd job (no agent session)
+runs `factory precheck && factory tick` hourly. The factory reuses a live AO
+orchestrator for the project, or spawns one, and sends it each NEEDS YOU; it only
+relays. A ticket that needs you also has its AO board card renamed
+"NEEDS YOU: factory <feature> NN". After a merge, the ticket's worktree and local
+claim branch are removed (the work lives on the integration branch); a ticket that
+needs you keeps both until it merges. Needs the `ao` CLI, the repo registered as an AO project and macOS. The
+factory refuses a worker when the AO project's permission mode is
+`bypass-permissions` unless installed with `--allow-bypass`.
+
+The Orca runner needs the Orca CLI, the repo registered in Orca, an integration branch that is
 not main/master, and a committed `.engineering-workflow/gates.sh` whose last
 line is `GATES: PASS`.
 
@@ -113,7 +124,7 @@ only safety net and it is not a sandbox: a worker can still edit any file it can
 reach. Use --allow-bypass only for repos and machines you trust the agent with.
 
 ```sh
-python3 -B workflow.py factory install --feature NAME [--integration-branch BRANCH] [--paused] [--allow-bypass]
+python3 -B workflow.py factory install --feature NAME [--runner orca|ao] [--integration-branch BRANCH] [--paused] [--allow-bypass]
 python3 -B workflow.py factory status | set SETTING VALUE | pause [--now] | resume
 python3 -B workflow.py factory cycle | approve TICKET | requeue TICKET | uninstall
 ```

@@ -1,10 +1,11 @@
-"""Factory mode: build a feature's tickets unattended, one Orca worker per ticket."""
+"""Factory mode: build a feature's tickets unattended, one Orca or AO worker per ticket."""
 from contextlib import contextmanager
 from datetime import datetime, timezone
 import fcntl
 import json
 import os
 from pathlib import Path
+import plistlib
 import re
 import shlex
 import shutil
@@ -70,6 +71,7 @@ def set_card(worktree, status, comment=None):
 
 
 def register_heartbeat(state):
+    if state.get("runner") == "ao": return register_launchd(state)
     checkout = state["integration_checkout"]
     result = orca("automations", "create", "--name", f"factory {state['feature']}", "--trigger", "hourly",
                   "--provider", "claude", "--workspace", f"path:{checkout}",
@@ -80,6 +82,7 @@ def register_heartbeat(state):
 
 
 def remove_heartbeat(automation_id):
+    if automation_id.startswith(HEARTBEAT_PREFIX): return remove_launchd(automation_id)
     orca("automations", "remove", automation_id)
 
 
@@ -90,12 +93,171 @@ def launch_worker(worktree, prompt):
 
 
 def worker_alive(handle):
+    if is_ao(handle): return ao_alive(handle)
     return bool(orca("terminal", "show", "--terminal", handle).get("terminal", {}).get("connected"))
 
 
 def stop_worker(handle):
+    if is_ao(handle):
+        ao("session", "kill", handle[3:], reply=False)
+        return not worker_alive(handle)
     orca("terminal", "close", "--terminal", handle, check=False)  # reports ok:false even when it worked
     return not worker_alive(handle)
+
+
+# --- AO adapter: the only code that calls the ao CLI or launchctl -----------------
+# AO handles are "ao:<session id>"; Orca handles are bare terminal handles, so old ledgers keep working.
+
+AO_ENV_DROP = ("AO_SESSION_ID", "AO_PROJECT_ID", "AO_ISSUE_ID")  # act as the factory, not the calling session
+AO_BYPASS_REASON = ("AO runs this project's agents in bypass-permissions mode; change the project's "
+                    "permission mode or reinstall with --allow-bypass")
+HEARTBEAT_PREFIX = "com.engineering-workflow.factory."
+
+
+def is_ao(handle): return isinstance(handle, str) and handle.startswith("ao:")
+
+
+def ao_executable():
+    name = os.environ.get("AO_CLI_COMMAND") or "ao"
+    path = shutil.which(name)
+    if not path: raise ValueError(f"AO CLI not found ({name})")
+    return path
+
+
+def ao(*args, reply=True):
+    """Run the ao CLI; its JSON reply when `reply`, else its text. Raises ValueError on failure."""
+    env = {k: v for k, v in os.environ.items() if k not in AO_ENV_DROP}
+    result = subprocess.run([ao_executable(), *args, *(["--json"] if reply else [])], text=True,
+                            capture_output=True, timeout=120, env=env)
+    if result.returncode != 0:
+        raise ValueError(f"ao {' '.join(args[:2])} failed: {(result.stderr or result.stdout).strip() or 'no detail'}")
+    if not reply: return result.stdout
+    try: data = json.loads(result.stdout)
+    except json.JSONDecodeError: data = None
+    if not isinstance(data, dict): raise ValueError(f"ao {' '.join(args[:2])} failed: unreadable reply")
+    return data
+
+
+def ao_project(checkout):
+    """The id of the AO project registered at this checkout."""
+    here = Path(checkout).resolve()
+    for project in ao("project", "ls").get("projects", []):
+        path = ao("project", "get", project["id"]).get("project", {}).get("path")
+        if path and Path(path).resolve() == here: return project["id"]
+    raise ValueError("This repo is not registered in AO")
+
+
+def ao_spawn(state, name, branch=None, prompt=None, kind="worker"):
+    args = ["spawn", "--project", state["ao_project"], "--kind", kind, "--harness", "claude-code", "--name", name]
+    if branch: args += ["--branch", branch]
+    if prompt: args += ["--prompt", prompt]
+    found = re.search(r"spawned session (\S+)", ao(*args, reply=False))
+    if not found: raise ValueError("ao spawn failed: no session id in its reply")
+    return "ao:" + found.group(1)
+
+
+def ao_send(handle, message): ao("send", "--session", handle[3:], "--message", message, reply=False)
+
+
+def branch_worktree(checkout, branch):
+    path = None
+    for line in (git("worktree", "list", "--porcelain", cwd=checkout) or "").splitlines():
+        if line.startswith("worktree "): path = line[len("worktree "):]
+        elif line == f"branch refs/heads/{branch}": return path
+    return None
+
+
+def ao_alive(handle):
+    return not ao("session", "get", handle[3:]).get("session", {}).get("isTerminated", True)
+
+
+def ao_bypass(handle):
+    """Why this AO worker must not run without --allow-bypass, or None; fails closed like the Orca check."""
+    try:
+        project = ao("session", "get", handle[3:])["session"]["projectId"]
+        config = ao("project", "get", project)["project"].get("config") or {}
+        modes = {(config.get("agentConfig") or {}).get("permissions"),
+                 ((config.get("worker") or {}).get("agentConfig") or {}).get("permissions")}
+    except (ValueError, OSError, subprocess.SubprocessError, KeyError, TypeError, AttributeError):
+        return "could not confirm AO's permission mode"
+    return AO_BYPASS_REASON if "bypass-permissions" in modes else None
+
+
+def launchctl(*args):
+    path = shutil.which("launchctl")
+    if not path: raise ValueError("launchctl not found; the ao runner's heartbeat needs macOS")
+    result = subprocess.run([path, *args], text=True, capture_output=True, timeout=60)
+    if result.returncode != 0: raise ValueError(f"launchctl {args[0]} failed: {result.stderr.strip() or 'no detail'}")
+
+
+def plist_path(label): return Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
+
+
+def register_launchd(state):
+    """An hourly launchd job: precheck, then tick. Plain Python, no agent session; returns its label."""
+    checkout, label = state["integration_checkout"], f"{HEARTBEAT_PREFIX}{state['ao_project']}.{state['feature']}"
+    tools = dict.fromkeys(str(Path(p).parent) for p in (ao_executable(), shutil.which("git") or "/usr/bin/git"))
+    env = {"PATH": os.pathsep.join([*tools, "/usr/bin", "/bin"])}
+    if os.environ.get("AO_DATA_DIR"): env["AO_DATA_DIR"] = os.environ["AO_DATA_DIR"]
+    log = str(Path(state["state_dir"]) / "heartbeat.log")
+    script = f"{workflow_command('precheck', '--project', checkout)} && {workflow_command('tick', '--project', checkout)}"
+    path = plist_path(label)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(plistlib.dumps({"Label": label, "ProgramArguments": ["/bin/sh", "-c", script],
+                                     "StartInterval": 3600, "EnvironmentVariables": env,
+                                     "StandardOutPath": log, "StandardErrorPath": log}))
+    launchctl("bootstrap", f"gui/{os.getuid()}", str(path))
+    return label
+
+
+def remove_launchd(label):
+    try: launchctl("bootout", f"gui/{os.getuid()}/{label}")
+    finally: plist_path(label).unlink(missing_ok=True)
+
+
+def close_hint(handle):
+    return f"kill it with `ao session kill {handle[3:]}`" if is_ao(handle) else "close it in Orca"
+
+
+def ensure_relay(state):
+    """The project's live AO orchestrator, told it relays this factory; one is spawned when there is none."""
+    for row in ao("orchestrator", "ls").get("data", []):
+        if row.get("projectId") == state["ao_project"] and not row.get("isTerminated"):
+            handle = "ao:" + row["id"]
+            ao_send(handle, relay_prompt(state))
+            return handle
+    state["relay_spawned"] = True
+    return ao_spawn(state, f"factory {state['feature']}", prompt=relay_prompt(state), kind="orchestrator")
+
+
+def relay(state, message):
+    if not ao_alive(state["relay_handle"]): state["relay_handle"] = ensure_relay(state)
+    ao_send(state["relay_handle"], message)
+
+
+def ao_attach(state, entry, ticket):
+    """Give the entry a live AO session in a worktree on its claim branch, and mark that worktree.
+    Reuses a live session, restores a dead one, spawns one when it has none; ValueError when it cannot."""
+    handle = entry.get("worker_handle")
+    if is_ao(handle):
+        if not ao_alive(handle): ao("session", "restore", handle[3:], reply=False)
+    else:
+        entry["worker_handle"] = ao_spawn(state, f"factory {state['feature']} {ticket}", entry["branch"])
+    worktree = branch_worktree(state["integration_checkout"], entry["branch"])
+    if not worktree: raise ValueError(f"AO made no worktree on {entry['branch']}")
+    entry["worktree"] = worktree
+    save(ticket_marker(worktree), {"ticket": ticket, "state_dir": state["state_dir"]})
+
+
+def relay_prompt(state):
+    checkout = state["integration_checkout"]
+    return (f"You relay the engineering-workflow factory for feature {state['feature']} in {checkout}. "
+            "Messages that start with 'Ticket NN NEEDS YOU' or 'NEEDS YOU' come from the factory; reports from "
+            "factory workers may also arrive. For each one that needs the person, tell them in one or two plain "
+            "sentences what is waiting and the exact next command, run from that checkout: "
+            f"`{workflow_command('status', '--project', checkout)}`, then `factory approve NN` or "
+            "`factory requeue NN`. Ignore routine progress. Never edit files, merge, push, open PRs or run "
+            "factory commands yourself. Reply OK to this message and wait.")
 
 
 def stop(entry):
@@ -106,6 +268,7 @@ def stop(entry):
 
 def bypass_problem(handle):
     """Why this agent must not run without --allow-bypass, or None; a terminal Orca cannot show fails closed."""
+    if is_ao(handle): return ao_bypass(handle)
     try: text = json.dumps(orca("terminal", "read", "--terminal", handle, "--limit", "40")).lower()
     except (ValueError, OSError, subprocess.SubprocessError): return "could not confirm Orca's permission mode"
     return BYPASS_REASON if any(word in text for word in BYPASS_WORDS) else None
@@ -118,9 +281,22 @@ def ticket_marker(project):
 
 
 def in_ticket_worktree(path):
-    """Inside a ticket worktree, by its marker or by where it lies (a worker can delete its marker)."""
+    """Inside a ticket worktree, by its marker, by where it lies, or (AO) by its claim branch;
+    a worker can delete its marker."""
     parts = Path(path).resolve().parts
-    return ticket_marker(path).is_file() or any(parts[i:i + 3] == WORKTREES for i in range(len(parts)))
+    return (ticket_marker(path).is_file() or any(parts[i:i + 3] == WORKTREES for i in range(len(parts)))
+            or ao_ticket_branch(path))
+
+
+def ao_ticket_branch(path):
+    """A linked worktree on a claim branch of the AO factory installed in its main checkout."""
+    found = git("rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir", "--abbrev-ref", "HEAD", cwd=path)
+    lines = (found or "").splitlines()
+    if len(lines) != 3 or lines[0] == lines[1] or not lines[2].startswith("factory/"): return False
+    try: state = read_regular(Path(lines[1]).parent / STATE / "factory" / "state.json")
+    except (OSError, ValueError): return False
+    return (state.get("runner") == "ao" and isinstance(state.get("feature"), str)
+            and re.fullmatch(re.escape(f"factory/{state['feature']}-") + r"[0-9]+", lines[2]) is not None)
 
 
 def read_regular(path):
@@ -216,18 +392,26 @@ def move(entry, new_state, reason=None):
     entry["history"].append({"at": now(), "state": new_state})
 
 
-def card(ticket, entry, out):
-    """Bring the entry's Orca card up to date; a failure prints a line and is retried next time."""
+def card(state, ticket, entry, out):
+    """Bring the entry's Orca card (AO: the relay's NEEDS YOU message) up to date; a failure prints a line
+    and is retried next time."""
     status = CARDS.get(entry["state"])
     label = "" if entry["state"] == "needs-you" else f"{entry['state']}: "
     comment = f"NEEDS YOU: {label}{entry['reason']}" if entry["state"] in REQUEUABLE else None
     if not status or entry.get("card") == [status, comment]:
         return
-    if not Path(entry["worktree"]).exists():  # Orca's card went with the worktree; never retry
+    ao_runner = state.get("runner") == "ao"
+    if not ao_runner and not Path(entry["worktree"]).exists():  # Orca's card went with the worktree; never retry
         entry["card"] = [status, comment]
         return
     try:
-        set_card(entry["worktree"], status, comment)
+        if ao_runner:
+            if is_ao(entry.get("worker_handle")):  # the board card: its title says NEEDS YOU while it waits
+                title = f"factory {state['feature']} {ticket}"
+                ao("session", "rename", entry["worker_handle"][3:], f"NEEDS YOU: {title}" if comment else title,
+                   reply=False)
+            if comment: relay(state, f"Ticket {ticket} {comment} (branch {entry['branch']})")
+        else: set_card(entry["worktree"], status, comment)
     except (ValueError, OSError, subprocess.SubprocessError) as error:
         out.append(f"card for {ticket} not updated: {error}")
         return
@@ -346,8 +530,12 @@ def merge_ticket(state, entry):
 def valid(state, ticket, entry):
     """The ledger is worker-writable: act only on this ticket's own worktree and branch."""
     worktree = Path(entry["worktree"]).resolve()
-    return (worktree.parent == (Path(state["state_dir"]) / "worktrees").resolve()
-            and entry["branch"] == branch_name(state, ticket))
+    if entry["branch"] != branch_name(state, ticket): return False
+    if state.get("runner") == "ao":
+        actual = branch_worktree(state["integration_checkout"], entry["branch"])
+        return (actual is not None and Path(actual).resolve() == worktree
+                and worktree != Path(state["integration_checkout"]).resolve())
+    return worktree.parent == (Path(state["state_dir"]) / "worktrees").resolve()
 
 
 def land(state, ticket, entry, out, hold=None):
@@ -359,9 +547,13 @@ def land(state, ticket, entry, out, hold=None):
         out.append(f"{ticket} needs you: {reason}")
         return False
     move(entry, "merged")
-    card(ticket, entry, out)  # before the worktree, and with it the Orca card, goes away
+    card(state, ticket, entry, out)  # before the worktree, and with it the Orca card, goes away
+    if state.get("runner") == "ao" and not stop(entry):
+        out.append(f"worker {entry['worker_handle']} did not stop; {close_hint(entry['worker_handle'])}")
     try: git("worktree", "remove", "--force", entry["worktree"], cwd=state["integration_checkout"], timeout=300)
     except subprocess.TimeoutExpired: out.append(f"worktree for {ticket} not removed: git timed out")
+    if state.get("runner") == "ao":  # merged work lives on the integration branch; drop the local claim branch
+        git("branch", "-d", entry["branch"], cwd=state["integration_checkout"])
     out.append(f"merged {ticket} into {state['integration_branch']}")
     return True
 
@@ -420,7 +612,7 @@ def claim(state, ledger, ticket):
         return None
     ledger[ticket["id"]] = entry
     save(Path(state["state_dir"]) / "ledger.json", ledger)  # persist before the worktree so a crash cannot strand the claim
-    add_worktree(state, entry, ticket["id"])
+    if state.get("runner") != "ao": add_worktree(state, entry, ticket["id"])  # AO makes it in launch()
     return entry
 
 
@@ -430,13 +622,17 @@ def refuse(state, ticket, entry, reason, out):
     move(entry, "needs-you", reason)
     state["mode"] = "paused"
     out.append(f"{ticket} needs you: {reason}; factory paused")
-    if not stopped: out.append(f"worker {entry['worker_handle']} did not stop; close it in Orca")
+    if not stopped: out.append(f"worker {entry['worker_handle']} did not stop; {close_hint(entry['worker_handle'])}")
 
 
 def launch(state, entry, ticket, out, started=None):
     """Launch the worker; park the ticket on launch failure or an unallowed bypass launch."""
     try:
-        entry["worker_handle"] = launch_worker(entry["worktree"], worker_brief(state, ticket, entry["worktree"]))
+        if state.get("runner") == "ao":
+            ao_attach(state, entry, ticket["id"])
+            ao_send(entry["worker_handle"], worker_brief(state, ticket, entry["worktree"]))
+        else:
+            entry["worker_handle"] = launch_worker(entry["worktree"], worker_brief(state, ticket, entry["worktree"]))
     except ValueError as error:
         move(entry, "needs-you", f"worker launch failed: {error}")
         out.append(f"{ticket['id']} needs you: worker launch failed")
@@ -456,11 +652,12 @@ def relaunch(state, entry, ticket, out):
             move(entry, "needs-you", "already claimed")
             out.append(f"{ticket['id']} needs you: already claimed")
             return False
-        add_worktree(state, entry, ticket["id"])
+        if state.get("runner") != "ao": add_worktree(state, entry, ticket["id"])
         del entry["leftover"]
     try:
+        if state.get("runner") == "ao": ao_attach(state, entry, ticket["id"])  # restore its session, or a new one
         counters(entry["worktree"], reset=True)
-    except OSError:  # nothing to relaunch into
+    except (OSError, ValueError):  # nothing to relaunch into
         move(entry, "needs-you", "worktree missing")
         out.append(f"{ticket['id']} needs you: worktree missing")
         return False
@@ -556,14 +753,14 @@ def enforce_caps(state, ledger, out):
         if not verdict:
             continue
         new, reason = verdict
-        if not stop(entry): out.append(f"worker {entry['worker_handle']} did not stop; close it in Orca")
+        if not stop(entry): out.append(f"worker {entry['worker_handle']} did not stop; {close_hint(entry['worker_handle'])}")
         move(entry, new, reason)
         out.append(f"{ticket} {new}: {reason}; {entry['branch']} and its worktree are kept")
 
 
-def update_cards(ledger, out):
+def update_cards(state, ledger, out):
     for ticket, entry in ledger.items():
-        card(ticket, entry, out)
+        card(state, ticket, entry, out)
 
 
 def in_flight(ledger): return any(e["state"] in ("working", "approved") for e in ledger.values())
@@ -584,16 +781,21 @@ def review_due(state, ledger):
 def final_review(state, ledger, out):
     """One review agent in the integration checkout once the feature is done, then pause."""
     if not review_due(state, ledger): return
+    brief = (f"Use the ew-factory skill (final review brief) for {state['feature']} on "
+             f"{state['integration_branch']}; write findings to {Path(state['state_dir']) / 'final-review.md'}.")
     try:
-        handle = launch_worker(state["integration_checkout"],
-                               f"Use the ew-factory skill (final review brief) for {state['feature']} on "
-                               f"{state['integration_branch']}; write findings to {Path(state['state_dir']) / 'final-review.md'}.")
+        if state.get("runner") == "ao":  # AO needs a branch of its own: one at the integration tip
+            branch = f"factory/{state['feature']}-final-review"
+            git("branch", "-f", branch, state["integration_branch"], cwd=state["integration_checkout"])
+            handle = ao_spawn(state, f"factory {state['feature']} final review", branch, brief)
+        else:
+            handle = launch_worker(state["integration_checkout"], brief)
     except ValueError as error:  # no retry every hour: the person resumes once Orca is fixed
         out.append(f"final review launch failed: {error}")
     else:
         reason = None if state["allow_bypass"] else bypass_problem(handle)
         if reason:  # stays not-started: resume launches it again
-            if not stop({"worker_handle": handle}): out.append(f"worker {handle} did not stop; close it in Orca")
+            if not stop({"worker_handle": handle}): out.append(f"worker {handle} did not stop; {close_hint(handle)}")
             out.append(f"final review not started: {reason}")
         else:
             state["final_review_handle"], state["final_review"] = handle, "dispatched"
@@ -624,7 +826,7 @@ def tick(directory):
             update_mode(state, ledger, out)
             state["last_tick"] = now()
         finally:  # keep merges and claims made before any failure
-            update_cards(ledger, out)
+            update_cards(state, ledger, out)
             save(directory / "ledger.json", ledger)
             save(directory / "state.json", state)
     print("\n".join(out) or "nothing to do")
@@ -633,7 +835,8 @@ def tick(directory):
 # --- CLI actions ------------------------------------------------------------------
 
 def install(args):
-    orca_executable()
+    runner = args.runner or "orca"
+    ao_executable() if runner == "ao" else orca_executable()
     checkout = find_project(args.project)
     directory = checkout / STATE / "factory"
     if (directory / "state.json").is_file(): raise ValueError("A factory is already installed for this project")
@@ -646,8 +849,10 @@ def install(args):
     if not (checkout / GATES).is_file():
         raise ValueError(f"No gate script at {GATES}. Save and commit this starter, then install again:\n"
                          f"{starter_gate(checkout)}")
-    try: orca("repo", "show", "--repo", f"path:{checkout}")
-    except ValueError: raise ValueError("This repo is not registered in Orca") from None
+    if runner == "ao": project = ao_project(checkout)
+    else:
+        try: orca("repo", "show", "--repo", f"path:{checkout}")
+        except ValueError: raise ValueError("This repo is not registered in Orca") from None
     if git("check-ignore", "-q", STATE + "/", cwd=checkout) is None:
         exclude = (checkout / git("rev-parse", "--git-common-dir", cwd=checkout)).resolve() / "info" / "exclude"
         exclude.parent.mkdir(exist_ok=True)
@@ -656,8 +861,14 @@ def install(args):
              "integration_branch": branch, "integration_checkout": str(checkout), "state_dir": str(directory),
              "allow_bypass": args.allow_bypass, "concurrency": 3, "build_slots": 1, "daily_ticket_cap": 10,
              "stop_if_waiting": 5, "max_turns": 100, "max_minutes": 90, "automation_id": None, "wave": [],
-             "final_review": "not-started", "last_tick": None}
-    state["automation_id"] = register_heartbeat(state)
+             "final_review": "not-started", "last_tick": None, "runner": runner}
+    if runner == "ao":
+        state.update(ao_project=project, relay_spawned=False)
+        state["relay_handle"] = ensure_relay(state)
+    try: state["automation_id"] = register_heartbeat(state)
+    except ValueError:
+        if state.get("relay_spawned"): stop({"worker_handle": state["relay_handle"]})
+        raise
     save(directory / "state.json", state)
     print(f"Factory installed for {args.feature} on {branch} ({state['mode']})")
 
@@ -668,11 +879,18 @@ def uninstall(args):
     with tick_lock(directory) as (state, ledger):
         out = []
         stop_all(ledger, out, "stopped by uninstall")
-        update_cards(ledger, out)
+        update_cards(state, ledger, out)
         try:
             if state["automation_id"]: remove_heartbeat(state["automation_id"])
         except ValueError as error:
             out.append(f"heartbeat not removed ({error}); uninstalling anyway")
+        if state.get("relay_spawned") and not stop({"worker_handle": state["relay_handle"]}):
+            out.append(f"relay {state['relay_handle']} did not stop; {close_hint(state['relay_handle'])}")
+        review = state.get("final_review_handle")
+        if is_ao(review) and not stop({"worker_handle": review}):
+            out.append(f"final review {review} did not stop; {close_hint(review)}")
+        if state.get("runner") == "ao":
+            git("branch", "-D", f"factory/{state['feature']}-final-review", cwd=state["integration_checkout"])
         kept = directory / f"ledger-{state['feature']}-{datetime.now(timezone.utc):%Y%m%dT%H%M%S}.json"
         save(kept, ledger)  # a new install starts with an empty ledger
         (directory / "ledger.json").unlink(missing_ok=True)
@@ -762,7 +980,7 @@ def approve(args):
         try:
             merged = land(state, args.ticket, entry, out)
         finally:
-            update_cards(ledger, out)
+            update_cards(state, ledger, out)
             save(directory / "ledger.json", ledger)
     print("\n".join(out))
     return 0 if merged else 1
@@ -817,7 +1035,7 @@ def pause(args):
     with tick_lock(directory) as (state, ledger):
         out = []
         stop_all(ledger, out, "stopped by pause --now")
-        update_cards(ledger, out)
+        update_cards(state, ledger, out)
         state["mode"] = "paused"
         save(directory / "ledger.json", ledger)
         save(directory / "state.json", state)
@@ -829,7 +1047,7 @@ def stop_all(ledger, out, reason):
     for ticket, entry in ledger.items():
         if entry["state"] != "working":
             continue
-        if not stop(entry): out.append(f"worker {entry['worker_handle']} did not stop; close it in Orca")
+        if not stop(entry): out.append(f"worker {entry['worker_handle']} did not stop; {close_hint(entry['worker_handle'])}")
         move(entry, "interrupted", reason)
         out.append(f"interrupted {ticket}; {entry['branch']} and its worktree are kept")
 
@@ -842,7 +1060,7 @@ def go(args, mode):
 
 
 def add_parser(sub):
-    f = sub.add_parser("factory", help="Unattended per-ticket builds through Orca")
+    f = sub.add_parser("factory", help="Unattended per-ticket builds through Orca or AO")
     f.add_argument("action", choices=("install", "uninstall", "status", "set", "tick", "gate", "report", "precheck",
                                       "pause", "resume", "cycle", "approve", "requeue"))
     f.add_argument("ticket", nargs="?", help="the ticket id, or set's setting")
@@ -850,6 +1068,7 @@ def add_parser(sub):
     f.add_argument("--project", default="."); f.add_argument("--feature")
     f.add_argument("--integration-branch", help="Default: the branch checked out in the project")
     f.add_argument("--paused", action="store_true"); f.add_argument("--allow-bypass", action="store_true")
+    f.add_argument("--runner", choices=("orca", "ao"), help="install: who runs the workers (default: orca)")
     f.add_argument("--slowed-by"); f.add_argument("--reason")
     f.add_argument("--now", action="store_true", help="pause: stop every worker now (keeps their worktrees)")
     f.add_argument("--ticket", dest="for_ticket", help="gate: record queue wait and run time on this ticket")
