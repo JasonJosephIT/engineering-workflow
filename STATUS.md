@@ -16,9 +16,8 @@ Merged to main via PR #6 (c398dd6) on 2026-10-29; not yet tagged. Build log:
 
 ## Next
 
-0. AO runner (`feature/ao-runner`, local, not pushed): review, merge, release as v0.4.0, then
-   reinstall the user runtime so `~/.engineering-workflow` has it. New factories use `--runner ao`;
-   the two live Orca factories finish on Orca.
+0. v0.4.0 (AO runner, PR #9) released 2026-10-31. New factories use `--runner ao`; the two
+   live Orca factories (Aristocrat course-factory-mvp, Herculean iolaus-columns) finish on Orca.
 1. Tag and release v0.3.0 from main (c398dd6).
 3. Remove the `orca-spike` repo entry in Orca's UI (left by the spike; no CLI for it).
 4. First real factory run (Herculean Iolaus-columns, 2026-10-30) confirmed the `agent launch` reply shape (fixed in v0.3.1); `terminal read` and `terminal show` shapes still to confirm.
