@@ -244,6 +244,25 @@ than claiming enforcement. Guard is an additional check, not a sandbox: supporte
 shell calls are covered, but interactive input and specialized tool paths may not
 be. Credential detection warns after writes; it is not pre-publication DLP.
 
+## Claude plugin (claude.ai upload or marketplace)
+
+The repository root is also a Claude Code plugin (`.claude-plugin/plugin.json`,
+`hooks/hooks.json`). Hooks run this repository's `workflow.py` from
+`${CLAUDE_PLUGIN_ROOT}`; a project pin still takes precedence. Skills appear
+as `engineering-workflow:<name>` instead of `ew-<name>`, and the plugin adds no
+CLAUDE.md block, Headroom startup or always-on ADHD ruleset. Build the upload zip
+from a release tag with only the package files:
+
+```sh
+git archive --format=zip -o engineering-workflow-$(cat VERSION).zip HEAD -- \
+  .claude-plugin hooks workflow.py reviews.py factory.py VERSION README.md \
+  SOURCES.md LICENSE workflow.lock.json core adapters skills vendor
+```
+
+Or add it as a marketplace in Claude Code:
+`/plugin marketplace add JasonJosephIT/engineering-workflow`, then
+`/plugin install engineering-workflow@engineering-workflow`.
+
 ## Develop and release
 
 ```sh

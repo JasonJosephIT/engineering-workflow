@@ -2,6 +2,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -43,6 +44,26 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(workflow.verify()["version"], "0.4.0")
         with self.assertRaises(ValueError):
             workflow.verify(expected="99.0.0")
+
+    def test_claude_plugin_manifest_matches_package_and_hooks_run(self):
+        version = (ROOT / "VERSION").read_text().strip()
+        manifest = json.loads((ROOT / ".claude-plugin/plugin.json").read_text())
+        market = json.loads((ROOT / ".claude-plugin/marketplace.json").read_text())
+        self.assertEqual(manifest["version"], version)
+        self.assertEqual(market["plugins"][0]["version"], version)
+        for folder in manifest["skills"]:
+            self.assertTrue(list((ROOT / folder).rglob("SKILL.md")), folder)
+        hooks = json.loads((ROOT / "hooks/hooks.json").read_text())["hooks"]
+        self.assertEqual(set(hooks), {"SessionStart", "PreToolUse", "PostToolUse", "Stop"})
+        command = hooks["PreToolUse"][0]["hooks"][0]["command"]
+        self.assertIn("${CLAUDE_PLUGIN_ROOT}/workflow.py", command)
+        shell = command.replace("python3", sys.executable, 1)
+        bad = json.dumps({"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": str(self.project),
+                          "tool_input": {"command": "rm -rf /"}})
+        r = subprocess.run(shell, shell=True, capture_output=True, text=True, input=bad,
+                           env={**os.environ, "CLAUDE_PLUGIN_ROOT": str(ROOT)})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(json.loads(r.stdout)["hookSpecificOutput"]["permissionDecision"], "deny")
 
     def test_dry_run_does_not_write(self):
         self.install("--dry-run")
