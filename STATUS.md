@@ -26,6 +26,14 @@ Merged to main via PR #6 (c398dd6) on 2026-10-29; not yet tagged. Build log:
 
 ## Decisions
 
+- 2026-11-04: New `ew-hill-climb` skill. The factory runs it once per feature after every
+  ticket merges, when the feature has an approved `.scratch/<feature>/climb.md`. The climb is
+  ledger entry `climb` on `factory/<feature>-climb`, gated and merged like a ticket, and the
+  final review waits for it. `factory queue <feature>` continues into the next approved
+  feature after the final review is dispatched (same integration branch, archived ledger)
+  instead of pausing, and pings you with `BUILT:` on each ticket that feature merges.
+  Tested with the fake Orca only; no live Orca or AO run yet. Climbs share
+  `max_minutes`/`max_turns` with tickets.
 - 2026-10-31: Factory gets `--runner ao` (Agent Orchestrator) beside Orca, default still `orca`.
   AO owns ticket worktrees (`ao spawn --branch` on the claim branch, then the brief via `ao send`
   once the marker is written); a launchd job runs `precheck && tick` hourly (no agent session);
@@ -226,5 +234,6 @@ Merged to main via PR #6 (c398dd6) on 2026-10-29; not yet tagged. Build log:
   - Remote build compute when queue wait grows: Orca SSH hosts first, then disposable
     VMs (he uses a service the captions call "boat.dev"; unverified).
   - Snapshot a warm, built checkout so workers skip full setup.
-  - Goal tickets that climb a measurable target ("2x faster, all checks pass").
+  - Goal tickets that climb a measurable target ("2x faster, all checks pass"). Built
+    2026-11-04 as the per-feature climb (`climb.md`, ew-hill-climb).
   - AI judge panel comparing screenshots for goals with no code check.

@@ -126,8 +126,21 @@ reach. Use --allow-bypass only for repos and machines you trust the agent with.
 ```sh
 python3 -B workflow.py factory install --feature NAME [--runner orca|ao] [--integration-branch BRANCH] [--paused] [--allow-bypass]
 python3 -B workflow.py factory status | set SETTING VALUE | pause [--now] | resume
-python3 -B workflow.py factory cycle | approve TICKET | requeue TICKET | uninstall
+python3 -B workflow.py factory cycle | approve TICKET | requeue TICKET | queue [FEATURE] | uninstall
 ```
+
+**Climb, then the next feature.** A feature may commit `.scratch/<feature>/climb.md`
+with `**Status:** ready-for-agent` (approved with the tickets), a `**Blast radius:**`
+line, and the goal: metric command, target, guardrails and round budget. Once every
+ticket has merged, the factory runs one climb worker (`ew-hill-climb`, through the
+ew-factory climb brief) on `factory/<feature>-climb`. Its id is `climb`, and it is
+gated, capped, merged, approved and requeued like a ticket. The final review runs
+after the climb merges. `factory queue FEATURE` lines up another feature whose
+tickets are approved: once the final review is dispatched, the factory archives the
+ledger and starts building that feature on the same integration branch, instead of
+pausing. Each ticket a queued feature merges pings you with a `BUILT:` line on the
+integration checkout's Orca card, or through the AO relay. The review for each
+queued feature goes to `final-review-<feature>.md`.
 
 `--integration-branch` defaults to the branch checked out in the project. `set`
 takes one of `concurrency`, `build_slots`, `daily_ticket_cap`, `stop_if_waiting`,
