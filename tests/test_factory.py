@@ -1507,6 +1507,7 @@ import json, os, sys
 from pathlib import Path
 with open(Path(os.environ['FAKE_AO_DIR']) / 'launchctl.jsonl', 'a') as log: log.write(json.dumps(sys.argv[1:]) + '\\n')
 """
+FAKE_SYSTEMCTL = FAKE_LAUNCHCTL.replace('launchctl.jsonl', 'systemctl.jsonl')
 
 
 class AoRunnerTests(unittest.TestCase):
@@ -1519,10 +1520,11 @@ class AoRunnerTests(unittest.TestCase):
         FactoryTests.setUp(self)
         self.ao_dir = self.base / 'ao'; self.ao_dir.mkdir()
         self.home = self.base / 'home'; self.home.mkdir()
-        for name, text in (('ao', FAKE_AO), ('launchctl', FAKE_LAUNCHCTL)):
+        for name, text in (('ao', FAKE_AO), ('launchctl', FAKE_LAUNCHCTL), ('systemctl', FAKE_SYSTEMCTL)):
             tool = self.fakebin / name; tool.write_text(text); tool.chmod(0o755)
         self.env.update(FAKE_AO_DIR=str(self.ao_dir), FAKE_AO_PROJECT=str(self.project), HOME=str(self.home),
-                        AO_SESSION_ID='caller-1')
+                        AO_SESSION_ID='caller-1', EW_FACTORY_HEARTBEAT='launchd')
+        self.env.pop('XDG_CONFIG_HOME', None)
         self.env.pop('AO_CLI_COMMAND', None)
 
     def ao_calls(self):
@@ -1715,6 +1717,43 @@ class AoRunnerTests(unittest.TestCase):
         self.cli('uninstall')
         self.assertIn(['session', 'kill', 'demo-3'], self.ao_calls())
         self.assertEqual(self.git('branch', '--list', 'factory/demo-final-review'), '')
+
+    def systemctl_calls(self):
+        log = self.ao_dir / 'systemctl.jsonl'
+        return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+
+    def test_ao_install_on_linux_writes_an_hourly_systemd_user_timer(self):
+        self.env['EW_FACTORY_HEARTBEAT'] = 'systemd'
+        self.install_ao()
+        label = 'com.engineering-workflow.factory.demo.demo'
+        self.assertEqual(self.state()['automation_id'], label)
+        units = self.home / '.config' / 'systemd' / 'user'
+        timer, service = (units / f'{label}.timer').read_text(), (units / f'{label}.service').read_text()
+        self.assertIn('OnUnitActiveSec=1h', timer)
+        self.assertIn('WantedBy=timers.target', timer)
+        self.assertIn('Type=oneshot', service)
+        self.assertIn('ExecStart=/bin/sh -c "', service)
+        self.assertIn('precheck --project', service)
+        self.assertIn(f"StandardOutput=append:{self.state_dir / 'heartbeat.log'}", service)
+        self.assertEqual(self.systemctl_calls(), [['--user', 'daemon-reload'], ['--user', 'enable', '--now', f'{label}.timer']])
+        self.assertFalse((self.home / 'Library' / 'LaunchAgents').exists())
+        self.assertFalse((self.ao_dir / 'launchctl.jsonl').exists())
+
+    def test_ao_uninstall_disables_the_systemd_timer_even_after_a_platform_switch(self):
+        self.env['EW_FACTORY_HEARTBEAT'] = 'systemd'
+        self.install_ao()
+        self.env['EW_FACTORY_HEARTBEAT'] = 'launchd'  # removal follows the unit files on disk, not the setting
+        self.cli('uninstall')
+        label = 'com.engineering-workflow.factory.demo.demo'
+        self.assertIn(['--user', 'disable', '--now', f'{label}.timer'], self.systemctl_calls())
+        units = self.home / '.config' / 'systemd' / 'user'
+        self.assertFalse((units / f'{label}.timer').exists())
+        self.assertFalse((units / f'{label}.service').exists())
+        self.assertFalse((self.ao_dir / 'launchctl.jsonl').exists())
+
+    def test_ao_heartbeat_backend_rejects_an_unknown_setting(self):
+        self.env['EW_FACTORY_HEARTBEAT'] = 'cron'
+        self.assertIn('EW_FACTORY_HEARTBEAT must be launchd or systemd', self.install_ao(ok=False).stderr)
 
     def test_ao_uninstall_boots_out_the_heartbeat_and_kills_its_own_relay(self):
         self.install_ao(); self.cli('tick'); self.cli('uninstall')

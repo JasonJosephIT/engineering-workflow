@@ -72,7 +72,8 @@ def set_card(worktree, status, comment=None):
 
 
 def register_heartbeat(state):
-    if state.get("runner") == "ao": return register_launchd(state)
+    if state.get("runner") == "ao":
+        return register_systemd(state) if heartbeat_backend() == "systemd" else register_launchd(state)
     checkout = state["integration_checkout"]
     result = orca("automations", "create", "--name", f"factory {state['feature']}", "--trigger", "hourly",
                   "--provider", "claude", "--workspace", f"path:{checkout}",
@@ -83,7 +84,8 @@ def register_heartbeat(state):
 
 
 def remove_heartbeat(automation_id):
-    if automation_id.startswith(HEARTBEAT_PREFIX): return remove_launchd(automation_id)
+    if automation_id.startswith(HEARTBEAT_PREFIX):
+        return remove_systemd(automation_id) if unit_path(automation_id, "timer").exists() else remove_launchd(automation_id)
     orca("automations", "remove", automation_id)
 
 
@@ -106,7 +108,7 @@ def stop_worker(handle):
     return not worker_alive(handle)
 
 
-# --- AO adapter: the only code that calls the ao CLI or launchctl -----------------
+# --- AO adapter: the only code that calls the ao CLI, launchctl or systemctl -------
 # AO handles are "ao:<session id>"; Orca handles are bare terminal handles, so old ledgers keep working.
 
 AO_ENV_DROP = ("AO_SESSION_ID", "AO_PROJECT_ID", "AO_ISSUE_ID")  # act as the factory, not the calling session
@@ -194,14 +196,69 @@ def launchctl(*args):
 def plist_path(label): return Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
 
 
-def register_launchd(state):
-    """An hourly launchd job: precheck, then tick. Plain Python, no agent session; returns its label."""
+def heartbeat_backend():
+    """launchd on macOS, a systemd user timer on Linux; EW_FACTORY_HEARTBEAT overrides (tests, odd hosts)."""
+    choice = os.environ.get("EW_FACTORY_HEARTBEAT") or ("systemd" if sys.platform.startswith("linux") else "launchd")
+    if choice not in ("launchd", "systemd"): raise ValueError(f"EW_FACTORY_HEARTBEAT must be launchd or systemd, not {choice!r}")
+    return choice
+
+
+def heartbeat_job(state):
+    """The label, environment, log path and shell script both heartbeat backends run every hour."""
     checkout, label = state["integration_checkout"], f"{HEARTBEAT_PREFIX}{state['ao_project']}.{state['feature']}"
     tools = dict.fromkeys(str(Path(p).parent) for p in (ao_executable(), shutil.which("git") or "/usr/bin/git"))
     env = {"PATH": os.pathsep.join([*tools, "/usr/bin", "/bin"])}
     if os.environ.get("AO_DATA_DIR"): env["AO_DATA_DIR"] = os.environ["AO_DATA_DIR"]
     log = str(Path(state["state_dir"]) / "heartbeat.log")
     script = f"{workflow_command('precheck', '--project', checkout)} && {workflow_command('tick', '--project', checkout)}"
+    return label, env, log, script
+
+
+def systemctl(*args):
+    path = shutil.which("systemctl")
+    if not path: raise ValueError("systemctl not found; the ao runner's Linux heartbeat needs systemd")
+    result = subprocess.run([path, "--user", *args], text=True, capture_output=True, timeout=60)
+    if result.returncode != 0: raise ValueError(f"systemctl {args[0]} failed: {result.stderr.strip() or 'no detail'}")
+
+
+def unit_path(label, kind):
+    base = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    return base / "systemd" / "user" / f"{label}.{kind}"
+
+
+def systemd_quote(value):
+    """One systemd unit-file value: double-quoted, with backslashes, quotes and % escaped."""
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%") + '"'
+
+
+def register_systemd(state):
+    """An hourly systemd user timer: precheck, then tick. Plain Python, no agent session; returns its label.
+    Needs lingering (`loginctl enable-linger`) to keep firing with nobody logged in; AO's host installer sets it."""
+    label, env, log, script = heartbeat_job(state)
+    service, timer = unit_path(label, "service"), unit_path(label, "timer")
+    service.parent.mkdir(parents=True, exist_ok=True)
+    environment = " ".join(systemd_quote(f"{k}={v}") for k, v in env.items())
+    service.write_text("[Unit]\nDescription=engineering-workflow factory heartbeat\n\n[Service]\nType=oneshot\n"
+                       f"Environment={environment}\nExecStart=/bin/sh -c {systemd_quote(script)}\n"
+                       f"StandardOutput=append:{log}\nStandardError=append:{log}\n")
+    timer.write_text("[Unit]\nDescription=engineering-workflow factory heartbeat, hourly\n\n"
+                     "[Timer]\nOnActiveSec=1h\nOnUnitActiveSec=1h\nPersistent=true\n\n[Install]\nWantedBy=timers.target\n")
+    systemctl("daemon-reload")
+    systemctl("enable", "--now", timer.name)
+    return label
+
+
+def remove_systemd(label):
+    try: systemctl("disable", "--now", f"{label}.timer")
+    finally:
+        for kind in ("timer", "service"): unit_path(label, kind).unlink(missing_ok=True)
+        try: systemctl("daemon-reload")
+        except ValueError: pass
+
+
+def register_launchd(state):
+    """An hourly launchd job: precheck, then tick. Plain Python, no agent session; returns its label."""
+    label, env, log, script = heartbeat_job(state)
     path = plist_path(label)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(plistlib.dumps({"Label": label, "ProgramArguments": ["/bin/sh", "-c", script],

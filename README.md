@@ -102,13 +102,13 @@ main, deploys, or publishes issues. A ticket that needs you shows on its Orca
 card, or (AO) arrives as a NEEDS YOU message to the project's AO orchestrator session.
 
 With `--runner ao`, workers are `claude-code` sessions that AO spawns on each
-ticket's claim branch, in worktrees AO owns. A launchd job (no agent session)
-runs `factory precheck && factory tick` hourly. The factory reuses a live AO
+ticket's claim branch, in worktrees AO owns. A launchd job on macOS, or a systemd
+user timer on Linux (no agent session), runs `factory precheck && factory tick` hourly. The factory reuses a live AO
 orchestrator for the project, or spawns one, and sends it each NEEDS YOU; it only
 relays. A ticket that needs you also has its AO board card renamed
 "NEEDS YOU: factory <feature> NN". After a merge, the ticket's worktree and local
 claim branch are removed (the work lives on the integration branch); a ticket that
-needs you keeps both until it merges. Needs the `ao` CLI, the repo registered as an AO project and macOS. The
+needs you keeps both until it merges. Needs the `ao` CLI, the repo registered as an AO project, and macOS or Linux with systemd (lingering on, as AO's host installer sets). The
 factory refuses a worker when the AO project's permission mode is
 `bypass-permissions` unless installed with `--allow-bypass`.
 

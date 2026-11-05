@@ -90,7 +90,7 @@ paused (`--paused`, start later with `factory resume`); or one cycle (install
 default, or Agent Orchestrator with `--runner ao`), a committed gate script and an
 integration branch that is not main/master. Pass `--allow-bypass` only when the
 human accepts the runner's permission-bypass launch. An hourly heartbeat (an Orca
-automation, or a launchd job for AO) runs `factory tick`; each ticket gets its own worktree and
+automation, or for AO a launchd job on macOS / systemd user timer on Linux) runs `factory tick`; each ticket gets its own worktree and
 worker following the ew-factory worker brief, and a final review runs when the
 feature is done. A feature with an approved `.scratch/<feature>/climb.md` first gets
 one ew-hill-climb run (the climb brief) after its last ticket merges, and the final
