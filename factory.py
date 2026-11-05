@@ -29,7 +29,8 @@ REQUEUABLE = ("needs-you", "capped", "interrupted")
 CARDS = {"working": "in-progress", **dict.fromkeys(REQUEUABLE, "in-review"), "merged": "completed"}
 FRESH_COUNTERS = {"turns": 0, "permission_needed": False}
 SETTINGS = ("concurrency", "build_slots", "daily_ticket_cap", "stop_if_waiting", "max_turns", "max_minutes")
-PERSON_ONLY = ("install", "uninstall", "set", "pause", "resume", "cycle", "approve", "requeue")
+PERSON_ONLY = ("install", "uninstall", "set", "pause", "resume", "cycle", "approve", "requeue", "queue")
+CLIMB = "climb"  # the ledger id of the feature's hill-climb, run after every ticket merged
 WORKTREES = (STATE, "factory", "worktrees")
 CONTROL_DIRS = {".engineering-workflow", ".claude", ".codex", ".agents", ".gemini"}
 CONTROL_FILES = {"CLAUDE.md", "AGENTS.md", "GEMINI.md", ".gitignore", ".gitattributes", ".gitmodules"}
@@ -256,8 +257,20 @@ def relay_prompt(state):
             "factory workers may also arrive. For each one that needs the person, tell them in one or two plain "
             "sentences what is waiting and the exact next command, run from that checkout: "
             f"`{workflow_command('status', '--project', checkout)}`, then `factory approve NN` or "
-            "`factory requeue NN`. Ignore routine progress. Never edit files, merge, push, open PRs or run "
+            "`factory requeue NN`. Messages that start with 'BUILT' are tickets of a queued feature the person "
+            "asked to hear about: pass each on in one plain sentence. Ignore other routine progress. "
+            "Never edit files, merge, push, open PRs or run "
             "factory commands yourself. Reply OK to this message and wait.")
+
+
+def ping(state, message, out):
+    """Tell the person something that needs no answer: the integration checkout's Orca card (unread dot),
+    or the AO relay. A failure prints a line; the ping is not retried."""
+    try:
+        if state.get("runner") == "ao": relay(state, message)
+        else: set_card(state["integration_checkout"], "in-progress", message)
+    except (ValueError, OSError, subprocess.SubprocessError) as error:
+        out.append(f"ping not sent: {error}")
 
 
 def stop(entry):
@@ -296,7 +309,7 @@ def ao_ticket_branch(path):
     try: state = read_regular(Path(lines[1]).parent / STATE / "factory" / "state.json")
     except (OSError, ValueError): return False
     return (state.get("runner") == "ao" and isinstance(state.get("feature"), str)
-            and re.fullmatch(re.escape(f"factory/{state['feature']}-") + r"[0-9]+", lines[2]) is not None)
+            and re.fullmatch(re.escape(f"factory/{state['feature']}-") + r"(?:[0-9]+|climb)", lines[2]) is not None)
 
 
 def read_regular(path):
@@ -360,17 +373,35 @@ def load(directory):
     return read_json(directory / "state.json"), read_json(ledger) if ledger.is_file() else {}
 
 
+def header_fields(path):
+    fields = {}
+    for key, value in re.findall(r"^\**([A-Z][A-Za-z ]*?):\**[ \t]*(\S.*?)[ \t]*$", path.read_text(), re.M):
+        fields.setdefault(key, value)  # the header's line wins over later body lines
+    return fields
+
+
+def radius_of(fields):
+    radius = fields.get("Blast radius")
+    return radius if radius in ("low", "medium") else "high"
+
+
 def tickets(checkout, feature):
     found = []
     for path in sorted((Path(checkout) / ".scratch" / feature / "issues").glob("[0-9][0-9]-*.md")):
-        fields = {}
-        for key, value in re.findall(r"^\**([A-Z][A-Za-z ]*?):\**[ \t]*(\S.*?)[ \t]*$", path.read_text(), re.M):
-            fields.setdefault(key, value)  # the header's line wins over later body lines
-        radius = fields.get("Blast radius")
+        fields = header_fields(path)
         found.append({"id": path.name[:2], "path": path, "status": fields.get("Status", ""),
-                      "radius": radius if radius in ("low", "medium") else "high",
+                      "radius": radius_of(fields),
                       "blocked_by": re.findall(r"(?:^|,)\s*(\d\d)\b", fields.get("Blocked by", ""))})
     return found
+
+
+def climb_ticket(state):
+    """The feature's approved climb file as a ticket (read on the integration branch), or None."""
+    path = Path(state["integration_checkout"]) / ".scratch" / state["feature"] / "climb.md"
+    if not path.is_file(): return None
+    fields = header_fields(path)
+    if fields.get("Status") != "ready-for-agent": return None
+    return {"id": CLIMB, "path": path, "status": fields["Status"], "radius": radius_of(fields), "blocked_by": []}
 
 
 def ready_tickets(state, ledger):
@@ -555,6 +586,8 @@ def land(state, ticket, entry, out, hold=None):
     if state.get("runner") == "ao":  # merged work lives on the integration branch; drop the local claim branch
         git("branch", "-d", entry["branch"], cwd=state["integration_checkout"])
     out.append(f"merged {ticket} into {state['integration_branch']}")
+    if state.get("ping_merges"):  # a queued feature: the person asked to hear about each ticket it builds
+        ping(state, f"BUILT: {state['feature']} {ticket} merged into {state['integration_branch']}", out)
     return True
 
 
@@ -562,15 +595,17 @@ def merge_approved(state, ledger, out):
     for ticket, entry in ledger.items():
         if entry["state"] == "approved":
             # ticket files are only trustworthy on the integration branch
-            radius = next((t["radius"] for t in tickets(integration_checkout(state), state["feature"])
-                           if t["id"] == ticket), "high")
+            found = (climb_ticket(state) if ticket == CLIMB
+                     else next((t for t in tickets(integration_checkout(state), state["feature"]) if t["id"] == ticket), None))
+            radius = found["radius"] if found else "high"
             hold = control_files(state, entry) or ("high blast radius: waiting for approval" if radius == "high" else None)
             land(state, ticket, entry, out, hold)
 
 
 def worker_brief(state, ticket, worktree):
     path = Path(worktree) / Path(ticket["path"]).relative_to(state["integration_checkout"])
-    return (f"Use the ew-factory skill (worker brief). Ticket: {path}. Ticket id: {ticket['id']}. "
+    kind = ("climb brief). Climb file" if ticket["id"] == CLIMB else "worker brief). Ticket")
+    return (f"Use the ew-factory skill ({kind}: {path}. Ticket id: {ticket['id']}. "
             f"Gate: {workflow_command('gate', '--ticket', ticket['id'], '--project', worktree)}. "
             f"Report: {workflow_command('report', ticket['id'], 'approved', '--detach', '--project', worktree)}"
             f' --slowed-by "<one line>" (blocked instead of approved, plus --reason "<one line>", if stuck).')
@@ -772,17 +807,75 @@ def wave_settled(state, ledger, ticket):
     return ticket not in [t["id"] for t in startable(state, ledger)]
 
 
+def built(state, ledger):
+    """Every started ticket (not the climb) merged, and nothing startable."""
+    started = [e for t, e in ledger.items() if t != CLIMB]
+    return (state["mode"] == "running" and state["final_review"] == "not-started" and bool(started)
+            and all(e["state"] == "merged" for e in started) and not startable(state, ledger))
+
+
+def climb_due(state, ledger):
+    """Every ticket merged and the feature has an approved climb file it has not run yet (or one requeued)."""
+    return (built(state, ledger) and ledger.get(CLIMB, {"state": "ready"})["state"] == "ready"
+            and climb_ticket(state) is not None)
+
+
+def start_climb(state, ledger, out):
+    """One climb worker on factory/<feature>-climb, like a ticket: its own worktree, gate, report and caps."""
+    if not climb_due(state, ledger) or free_room(state, ledger) <= 0: return
+    ticket = climb_ticket(state)
+    if CLIMB in ledger:  # requeued
+        relaunch(state, ledger[CLIMB], ticket, out)
+        return
+    if git("rev-parse", "--verify", "--quiet", f"refs/heads/{branch_name(state, CLIMB)}",
+           cwd=state["integration_checkout"]) is not None:
+        ledger[CLIMB] = {**new_entry(state, CLIMB, "needs-you", ""), "reason": LEFTOVER, "leftover": True}
+        out.append(f"{CLIMB} needs you: {LEFTOVER}")
+        return
+    entry = claim(state, ledger, ticket)
+    if entry is None: out.append(f"{CLIMB} already claimed")
+    else: launch(state, entry, ticket, out, started=f"climbing {state['feature']} on {entry['branch']}")
+
+
 def review_due(state, ledger):
-    """The whole feature is done: every started ticket merged (none waiting on the person) and nothing startable."""
-    return (state["mode"] == "running" and state["final_review"] == "not-started" and bool(ledger)
-            and all(e["state"] == "merged" for e in ledger.values()) and not startable(state, ledger))
+    """The whole feature is done: every started ticket merged (none waiting on the person), nothing startable,
+    and its approved climb, if any, merged too."""
+    climb = ledger.get(CLIMB)
+    return (built(state, ledger) and (climb["state"] == "merged" if climb else climb_ticket(state) is None))
+
+
+def review_file(state):
+    """The first feature's review keeps the old name; queued features get one each."""
+    name = f"final-review-{state['feature']}.md" if state.get("done_features") else "final-review.md"
+    return Path(state["state_dir"]) / name
+
+
+def advance(state, ledger, out):
+    """The feature is done and its review dispatched: start the next queued feature, else pause."""
+    queue = state.get("next_features") or []
+    if queue and tickets(state["integration_checkout"], queue[0]):
+        done = state["feature"]
+        save(Path(state["state_dir"]) / f"ledger-{done}-{datetime.now(timezone.utc):%Y%m%dT%H%M%S}.json", ledger)
+        ledger.clear()  # tick saves the emptied ledger for the next feature
+        state["done_features"] = [*state.get("done_features", []), done]
+        state["past_reviews"] = [*state.get("past_reviews", []), state.pop("final_review_handle", None)]
+        state.update(feature=queue[0], next_features=queue[1:], final_review="not-started", wave=[],
+                     ping_merges=True)
+        out.append(f"{done} done; now building {queue[0]}")
+        ping(state, f"BUILT: feature {done} built, climbed and sent to final review; now building {queue[0]}", out)
+        return True
+    if queue: out.append(f"next feature {queue[0]} has no ticket files; it stays queued")
+    state["mode"], state["wave_ended_at"] = "paused", now()
+    out.append("factory paused")
+    return False
 
 
 def final_review(state, ledger, out):
-    """One review agent in the integration checkout once the feature is done, then pause."""
-    if not review_due(state, ledger): return
+    """One review agent at the integration tip once the feature is done, then the next queued feature or pause."""
+    if not review_due(state, ledger): return False
+    tip = git("rev-parse", state["integration_branch"], cwd=state["integration_checkout"])
     brief = (f"Use the ew-factory skill (final review brief) for {state['feature']} on "
-             f"{state['integration_branch']}; write findings to {Path(state['state_dir']) / 'final-review.md'}.")
+             f"{state['integration_branch']} up to commit {tip}; write findings to {review_file(state)}.")
     try:
         if state.get("runner") == "ao":  # AO needs a branch of its own: one at the integration tip
             branch = f"factory/{state['feature']}-final-review"
@@ -800,8 +893,10 @@ def final_review(state, ledger, out):
         else:
             state["final_review_handle"], state["final_review"] = handle, "dispatched"
             out.append("final review dispatched")
+            return advance(state, ledger, out)
     state["mode"], state["wave_ended_at"] = "paused", now()
     out.append("factory paused")
+    return False
 
 
 def update_mode(state, ledger, out):
@@ -822,7 +917,8 @@ def tick(directory):
             enforce_caps(state, ledger, out)
             merge_approved(state, ledger, out)
             start_tickets(state, ledger, out)
-            final_review(state, ledger, out)
+            start_climb(state, ledger, out)
+            if final_review(state, ledger, out): start_tickets(state, ledger, out)  # the next feature, now
             update_mode(state, ledger, out)
             state["last_tick"] = now()
         finally:  # keep merges and claims made before any failure
@@ -886,11 +982,12 @@ def uninstall(args):
             out.append(f"heartbeat not removed ({error}); uninstalling anyway")
         if state.get("relay_spawned") and not stop({"worker_handle": state["relay_handle"]}):
             out.append(f"relay {state['relay_handle']} did not stop; {close_hint(state['relay_handle'])}")
-        review = state.get("final_review_handle")
-        if is_ao(review) and not stop({"worker_handle": review}):
-            out.append(f"final review {review} did not stop; {close_hint(review)}")
+        for review in [*state.get("past_reviews", []), state.get("final_review_handle")]:
+            if is_ao(review) and not stop({"worker_handle": review}):
+                out.append(f"final review {review} did not stop; {close_hint(review)}")
         if state.get("runner") == "ao":
-            git("branch", "-D", f"factory/{state['feature']}-final-review", cwd=state["integration_checkout"])
+            for feature in [*state.get("done_features", []), state["feature"]]:
+                git("branch", "-D", f"factory/{feature}-final-review", cwd=state["integration_checkout"])
         kept = directory / f"ledger-{state['feature']}-{datetime.now(timezone.utc):%Y%m%dT%H%M%S}.json"
         save(kept, ledger)  # a new install starts with an empty ledger
         (directory / "ledger.json").unlink(missing_ok=True)
@@ -911,7 +1008,8 @@ def status(args):
     print(status_line(state, ledger))
     for ticket, entry in sorted(ledger.items()):
         print(" ".join(filter(None, [ticket, entry["state"], entry["branch"], entry["reason"]])))
-    if (directory / "final-review.md").is_file(): print(f"final review: {directory / 'final-review.md'}")
+    for path in sorted(directory.glob("final-review*.md")): print(f"final review: {path}")
+    if state.get("next_features"): print(f"next: {', '.join(state['next_features'])}")
     for line in wave_summary(state, ledger): print(line)
     parked = sum(e["state"] in REQUEUABLE for e in ledger.values())
     if (parked and state["mode"] == "running" and state["final_review"] == "not-started"
@@ -1001,8 +1099,24 @@ def precheck(args):
     state, ledger = load(state_dir(args.project))
     if any(e["state"] == "working" for e in ledger.values()): return 0  # supervise them in any mode
     work = (in_flight(ledger) or (free_room(state, ledger) > 0 and startable(state, ledger))
-            or review_due(state, ledger))
+            or climb_due(state, ledger) or review_due(state, ledger))
     return 0 if state["mode"] != "paused" and work else 1
+
+
+def queue(args):
+    """Queue an approved feature to build once this one is built, climbed and sent to final review."""
+    directory = state_dir(args.project)
+    with tick_lock(directory) as (state, _):
+        queued = state.get("next_features") or []
+        if args.ticket:
+            name = args.ticket
+            if name == state["feature"] or name in queued or name in state.get("done_features", []):
+                raise ValueError(f"{name} is already in this factory")
+            if not tickets(state["integration_checkout"], name):
+                raise ValueError(f"No ticket files in .scratch/{name}/issues/ on {state['integration_branch']}")
+            state["next_features"] = queued = [*queued, name]
+            save(directory / "state.json", state)
+    print(f"next: {', '.join(queued) or 'nothing queued'}")
 
 
 def set_setting(args):
@@ -1062,8 +1176,8 @@ def go(args, mode):
 def add_parser(sub):
     f = sub.add_parser("factory", help="Unattended per-ticket builds through Orca or AO")
     f.add_argument("action", choices=("install", "uninstall", "status", "set", "tick", "gate", "report", "precheck",
-                                      "pause", "resume", "cycle", "approve", "requeue"))
-    f.add_argument("ticket", nargs="?", help="the ticket id, or set's setting")
+                                      "pause", "resume", "cycle", "approve", "requeue", "queue"))
+    f.add_argument("ticket", nargs="?", help="the ticket id, set's setting, or queue's feature")
     f.add_argument("result", nargs="?", help="report: approved|blocked; set: the value")
     f.add_argument("--project", default="."); f.add_argument("--feature")
     f.add_argument("--integration-branch", help="Default: the branch checked out in the project")
@@ -1084,5 +1198,5 @@ def run(args):
                "report": report, "precheck": precheck,
                "tick": lambda a: (spawn_tick if a.detach else tick)(state_dir(a.project)),
                "pause": pause, "resume": lambda a: go(a, "running"), "cycle": lambda a: go(a, "once"),
-               "approve": approve, "requeue": requeue}
+               "approve": approve, "requeue": requeue, "queue": queue}
     return actions[args.action](args) or 0

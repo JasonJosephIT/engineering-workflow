@@ -1,6 +1,6 @@
 ---
 name: ew-factory
-description: Factory worker and final-review briefs for workflow.py factory; not a controller.
+description: Factory worker, climb and final-review briefs for workflow.py factory; not a controller.
 ---
 
 Orca or Agent Orchestrator (AO) launches you with a prompt naming which brief to follow and the exact
@@ -36,11 +36,34 @@ for a human answer; when stuck, report blocked with the reason.
 - `--slowed-by` names what cost the most time (or "nothing").
 </rules>
 
+## Climb brief (after every ticket merged)
+
+<steps>
+1. Load ew-hill-climb. Read the climb file named in the launch prompt: its goal,
+   metric command, target, guardrails and round budget were approved with the tickets.
+2. Climb on this worktree's branch only, following ew-hill-climb unattended. The gate
+   command in the prompt is a guardrail on every kept round; run it only through that
+   command.
+3. Commit each kept round with its score, and commit `hill-climb/log.md`. Leave the
+   worktree clean.
+4. Dispatch ONE fresh reviewer subagent (inline pass under AO, as in the worker brief)
+   with the climb file, the final diff and the log. Its job: changes that game the
+   metric instead of improving what it measures, and harness edits after the baseline.
+   At most one fix round, then re-run the gate and commit.
+5. Last step, always: the prompt's report command. approved when the target was reached,
+   or the climb plateaued or spent its budget with a kept improvement, all guardrails
+   green and the held-out set not clearly below training. Otherwise blocked with
+   --reason (no improvement, harness wrong, overfit, review still failing).
+</steps>
+
+The worker brief's rules apply to the climb too. Never edit the climb file.
+
 ## Final review brief
 
 <steps>
-1. Review the integration branch named in the prompt against its merge base with the
-   repo's default branch (main or master).
+1. Review the integration branch named in the prompt, up to the commit the prompt names,
+   against its merge base with the repo's default branch (main or master). The factory
+   may already be merging the next feature on top; that work is not yours to review.
 2. If multi-model-review is installed, use it. Otherwise run ew-matt-code-review,
    then ew-ponytail-review.
 3. Add a security review when the diff touches auth, secrets, payments or trust

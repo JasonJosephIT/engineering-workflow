@@ -646,6 +646,103 @@ class FactoryTests(unittest.TestCase):
         (self.state_dir / 'final-review.md').write_text('findings\n')
         self.assertIn(f'final review: {self.state_dir / "final-review.md"}', self.cli('status').stdout)
 
+    # --- climb and queued features ---
+
+    def add_climb(self, status='ready-for-agent', radius='low'):
+        (self.project / '.scratch' / 'demo' / 'climb.md').write_text(
+            f'# Climb: faster build\n\n**Status:** {status}\n\n**Blast radius:** {radius}\n\n'
+            '**Metric:** `python3 bench.py` (ms, lower is better)\n\n**Target:** <= 50\n')
+        self.git('add', '-A'); self.git('commit', '-qm', 'climb file')
+
+    def add_feature(self, name):
+        issues = self.project / '.scratch' / name / 'issues'; issues.mkdir(parents=True)
+        (issues / '01-next.md').write_text(TICKET.replace('01: Thing', '01: Next'))
+        self.git('add', '-A'); self.git('commit', '-qm', f'{name} tickets')
+
+    def prompt(self, launch): return launch[launch.index('--prompt') + 1]
+
+    def test_approved_climb_runs_after_every_ticket_merges_then_the_final_review(self):
+        self.add_climb(); self.cli('install', '--feature', 'demo'); self.cli('tick')
+        self.build(); out = self.approve().stdout
+        self.assertIn('climbing demo on factory/demo-climb', out)
+        self.assertEqual(self.final_reviews(), [])
+        climb_tree = self.state_dir / 'worktrees' / 'demo-climb'
+        brief = self.prompt(self.launches()[-1])
+        self.assertIn(f'(climb brief). Climb file: {climb_tree / ".scratch" / "demo" / "climb.md"}', brief)
+        self.assertIn(f"report climb approved --detach --project '{climb_tree}'", brief)
+        self.assertEqual(self.ledger()['climb']['state'], 'working')
+        self.cli('precheck')
+        (climb_tree / 'faster.txt').write_text('x\n')
+        self.git('add', '-A', cwd=climb_tree); self.git('commit', '-qm', 'round 1: 80 -> 45 ms', cwd=climb_tree)
+        self.cli('report', 'climb', 'approved', '--slowed-by', 'nothing', project=climb_tree)
+        self.assertEqual(self.ledger()['climb']['state'], 'merged')
+        self.assertTrue((self.project / 'faster.txt').is_file())
+        self.assertEqual((len(self.final_reviews()), self.state()['mode']), (1, 'paused'))
+
+    def test_unapproved_climb_file_is_skipped(self):
+        self.add_climb(status='needs-triage'); self.cli('install', '--feature', 'demo'); self.cli('tick')
+        self.build(); self.approve()
+        self.assertNotIn('climb', self.ledger())
+        self.assertEqual(len(self.final_reviews()), 1)
+
+    def test_blocked_climb_waits_on_you_and_requeue_relaunches_it(self):
+        self.add_climb(); self.cli('install', '--feature', 'demo'); self.cli('tick'); self.build(); self.approve()
+        climb_tree = self.state_dir / 'worktrees' / 'demo-climb'
+        self.cli('report', 'climb', 'blocked', '--reason', 'no improvement', '--slowed-by', 'nothing',
+                 project=climb_tree)
+        self.assertEqual((self.ledger()['climb']['state'], self.final_reviews()), ('needs-you', []))
+        self.assertIn('final review waits on 1 parked ticket', self.cli('status').stdout)
+        self.cli('requeue', 'climb')
+        self.assertIn('relaunched climb in its worktree', self.cli('tick').stdout)
+
+    def test_high_radius_climb_waits_for_approval_before_merging(self):
+        self.add_climb(radius='high'); self.cli('install', '--feature', 'demo'); self.cli('tick')
+        self.build(); self.approve()
+        climb_tree = self.state_dir / 'worktrees' / 'demo-climb'
+        (climb_tree / 'faster.txt').write_text('x\n')
+        self.git('add', '-A', cwd=climb_tree); self.git('commit', '-qm', 'round 1', cwd=climb_tree)
+        self.cli('report', 'climb', 'approved', '--slowed-by', 'nothing', project=climb_tree)
+        self.assertEqual(self.ledger()['climb']['reason'], 'high blast radius: waiting for approval')
+        self.cli('approve', 'climb'); self.cli('tick')
+        self.assertEqual(len(self.final_reviews()), 1)
+
+    def test_queued_feature_starts_after_the_final_review_and_pings_each_merge(self):
+        self.add_feature('next'); self.cli('install', '--feature', 'demo')
+        self.assertEqual(self.cli('queue', 'next').stdout.strip(), 'next: next')
+        self.assertIn('next: next', self.cli('status').stdout)
+        self.cli('tick'); self.build()
+        out = self.approve().stdout
+        self.assertIn('demo done; now building next', out)
+        review = self.prompt(self.final_reviews()[0])
+        tip = self.git('rev-parse', 'build/demo~0')
+        self.assertIn(f'on build/demo up to commit {tip}', review)
+        self.assertIn(str(self.state_dir / 'final-review.md'), review)
+        state = self.state()
+        self.assertEqual((state['feature'], state['mode'], state['next_features'], state['done_features'],
+                          state['final_review'], state['past_reviews']),
+                         ('next', 'running', [], ['demo'], 'not-started', ['term_2']))
+        self.assertEqual(list(self.state_dir.glob('ledger-demo-*.json'))[0].name[:12], 'ledger-demo-')
+        self.assertEqual((sorted(self.ledger()), self.ledger()['01']['branch']), (['01'], 'factory/next-01'))
+        pings = [c for c in self.cards() if c[0] == f'path:{self.project}']
+        self.assertIn('BUILT: feature demo built, climbed and sent to final review; now building next', pings[-1])
+        tree = self.state_dir / 'worktrees' / 'next-01'
+        (tree / 'n.txt').write_text('x\n')
+        self.git('add', '-A', cwd=tree); self.git('commit', '-qm', 'next work', cwd=tree)
+        self.cli('report', '01', 'approved', '--slowed-by', 'nothing', project=tree)
+        pings = [c for c in self.cards() if c[0] == f'path:{self.project}']
+        self.assertIn('BUILT: next 01 merged into build/demo', pings[-1])
+        self.assertIn(str(self.state_dir / 'final-review-next.md'), self.prompt(self.final_reviews()[-1]))
+        self.assertEqual(self.state()['mode'], 'paused')  # nothing more queued
+
+    def test_queue_refuses_unknown_or_duplicate_features_and_ticket_worktrees(self):
+        self.add_feature('next'); self.cli('install', '--feature', 'demo')
+        self.assertIn('No ticket files in .scratch/nope/issues/', self.cli('queue', 'nope', ok=False).stderr)
+        self.assertIn('demo is already in this factory', self.cli('queue', 'demo', ok=False).stderr)
+        self.cli('queue', 'next')
+        self.assertIn('next is already in this factory', self.cli('queue', 'next', ok=False).stderr)
+        self.cli('tick')
+        self.assertIn('not a ticket worktree', self.cli('queue', 'next', project=self.worktree, ok=False).stderr)
+
     def test_uninstall_stops_workers_archives_the_ledger_and_a_new_feature_starts_fresh(self):
         self.cli('install', '--feature', 'demo'); self.cli('tick')
         self.cli('uninstall')
