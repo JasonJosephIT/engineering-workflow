@@ -202,6 +202,38 @@ Tickets that a wave unblocks wait for the next cycle.
 back to `paused` once every ticket in it is merged or waiting on you. "Run until the queue is empty" is
 `resume`; the factory pauses itself when nothing is ready and runs the final review.
 
+## Climb and the next feature
+
+A feature can carry one approved goal that the factory climbs once its tickets are built:
+
+```markdown
+# Climb: <goal>
+
+**Status:** ready-for-agent
+**Blast radius:** low | medium | high
+**Metric:** `<command that prints one number>` (direction)
+**Target:** <= 50 ms
+**Guardrails:** gates.sh, plus any no-regression checks
+**Budget:** 15 rounds
+```
+
+- Once every ticket is merged and nothing is startable, `tick` claims
+  `factory/<feature>-climb` and launches one worker with the ew-factory climb brief,
+  which runs ew-hill-climb unattended. The climb is ledger entry `climb`: same gate,
+  caps, control-file hold, blast-radius hold, `approve` and `requeue` as a ticket. A
+  climb file without `Status: ready-for-agent` is ignored.
+- The final review waits until the climb merges, so it reviews the climbed code.
+- `factory queue <feature>` (person only) lines up a feature whose tickets are
+  approved. When the final review is dispatched, `tick` archives the ledger as
+  `ledger-<feature>-<time>.json`, switches to the queued feature on the same
+  integration branch and starts its ready tickets in that same tick. Without a queued
+  feature, it pauses as before.
+- The review brief names the integration tip it covers, because the next feature's
+  merges land on top while it runs. Queued features write `final-review-<feature>.md`.
+- A queued feature pings the person on every ticket it merges (`BUILT: <feature> NN
+  merged`), plus one line when the factory moves on. On Orca the ping sets the
+  integration checkout's card with an unread dot; on AO it goes through the relay.
+
 ## Pause (two kinds)
 
 - `pause` = drain, at a ticket boundary: no new tickets start; every in-flight ticket

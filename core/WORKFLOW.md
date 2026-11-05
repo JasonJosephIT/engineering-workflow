@@ -92,7 +92,11 @@ integration branch that is not main/master. Pass `--allow-bypass` only when the
 human accepts the runner's permission-bypass launch. An hourly heartbeat (an Orca
 automation, or a launchd job for AO) runs `factory tick`; each ticket gets its own worktree and
 worker following the ew-factory worker brief, and a final review runs when the
-feature is done. The factory merges only into the integration branch; it never
+feature is done. A feature with an approved `.scratch/<feature>/climb.md` first gets
+one ew-hill-climb run (the climb brief) after its last ticket merges, and the final
+review waits for that climb. `factory queue <feature>` lines up another feature whose
+tickets are approved: after the final review is dispatched, the factory builds that
+feature instead of pausing, and pings the human on each ticket it merges. The factory merges only into the integration branch; it never
 merges to main, pushes to main, deploys or publishes issues. Tickets that need the
 human show NEEDS YOU on their Orca cards, or reach the human through the project's AO
 orchestrator session; once `stop_if_waiting` (5) of them are
