@@ -1,0 +1,33 @@
+{
+  "name": "ares-workflow",
+  "version": "0.4.0",
+  "description": "Ares Workflow: one versioned engineering workflow for Claude Code, Codex, Gemini CLI and Antigravity.",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JasonJosephIT/engineering-workflow.git"
+  },
+  "bin": {
+    "ares-workflow": "bin/ares-workflow.js"
+  },
+  "files": [
+    "bin/",
+    "workflow.py",
+    "reviews.py",
+    "factory.py",
+    "workflow.lock.json",
+    "VERSION",
+    "SOURCES.md",
+    "core/",
+    "adapters/",
+    "skills/",
+    "vendor/"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  }
+}

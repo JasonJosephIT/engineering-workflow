@@ -23,6 +23,7 @@ Merged to main via PR #6 (c398dd6) on 2026-10-29; not yet tagged. Build log:
 4. First real factory run (Herculean Iolaus-columns, 2026-10-30) confirmed the `agent launch` reply shape (fixed in v0.3.1); `terminal read` and `terminal show` shapes still to confirm.
 5. Skill routing: spec written (`.scratch/skill-routing/spec.md`); next
    `/ew-matt-to-tickets` for it.
+6. npm: after v0.4.0 is tagged, `npm login` then `npm publish` from that tag.
 
 ## Decisions
 
@@ -43,6 +44,14 @@ Merged to main via PR #6 (c398dd6) on 2026-10-29; not yet tagged. Build log:
   removed the heartbeat. Found and fixed: brief said `main` (now default branch); AO workers
   can't use subagents, so the reviewer pass may run inline; AO's PR workflow is ruled out in the brief.
 - 2026-10-30: v0.3.1 fixes the first real factory run (Herculean, Iolaus-columns): real Orca `agent launch` replies `{outcome: {handle}}` with no `launch` wrapper, so every launch started the worker, then the tick crashed with `KeyError: 'launch'` and recorded no handle. `launch_worker` now reads `outcome` at the top and still accepts the old wrapped shape; the fake orca replies in the real shape.
+- 2026-10-29: Publish "Ares Workflow" publicly on npmjs.com as `ares-workflow`, so anyone
+  can `npx ares-workflow` with no token (overrides the GitHub Packages choice below).
+  The package's code and docs become public; the GitHub repos stay private.
+- 2026-10-29: Publish "Ares Workflow" privately on GitHub Packages as
+  `@jasonjosephit/ares-workflow` (repos are private; public npm would expose the code).
+  `package.json` + `bin/ares-workflow.js` (node wrapper running `python3 workflow.py`)
+  are in; tarball install, verify and user install tested locally. Ships with the current release (0.4.0); not yet published.
+  `engineering-workflow` on public npm belongs to an unrelated package.
 - 2026-10-29: PR #6 merged to main (merge commit c398dd6) at your request.
 - 2026-10-29: At the turn cap the hook lets exactly one command through: the worker's
   own `workflow.py factory report <NN> blocked` (no shell operators), so a capped ticket

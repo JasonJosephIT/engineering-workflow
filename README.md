@@ -18,6 +18,18 @@ python3 -B workflow.py install --scope user --platform codex --dry-run
 python3 -B workflow.py install --scope user --platform codex
 ```
 
+Or install the same files from npm as `ares-workflow` (Ares Workflow), with no
+login and no repository access. This needs Node 18+ and Python 3.11+. Run any
+`workflow.py` command through `ares-workflow`:
+
+```sh
+npx ares-workflow verify --expected 0.4.0
+npx ares-workflow install --scope user --platform codex
+```
+
+An npm install has no Git checkout, so its receipt records no source commit and
+`doctor --check-upstream` cannot compare the release tag against it.
+
 Choose `claude`, `codex`, `gemini`, or `all`. This is confirmation of the actual
 target, not inference from whichever CLIs happen to be installed. Repeated
 installation is idempotent. Installs preserve existing instruction text and
@@ -284,7 +296,8 @@ python3 -B workflow.py freeze
 python3 -B workflow.py verify
 ```
 
-Bump VERSION and release references, regenerate the lock, review changes, commit,
-then tag that commit. `workflow.lock.json` pins package content and upstream source
+Bump VERSION, `package.json` and release references, regenerate the lock, review
+changes, commit, then tag that commit. Publish that tag to npm with `npm publish`
+(public; needs an npm login). `workflow.lock.json` pins package content and upstream source
 revisions. Native project build commands belong in that project's instructions.
 See [core/WORKFLOW.md](core/WORKFLOW.md), [SOURCES.md](SOURCES.md), and `adapters/`.
