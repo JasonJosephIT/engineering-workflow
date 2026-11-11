@@ -417,7 +417,8 @@ class FactoryTests(unittest.TestCase):
         self.cli('precheck')
         self.git('checkout', '-q', 'build/demo'); self.cli('tick')
         self.assertEqual(self.ledger()['01']['state'], 'merged')
-        self.cli('precheck', ok=False)  # running, nothing ready, working or approved
+        self.cli('precheck'); self.finish_review()  # the review is supervised until it reports
+        self.cli('precheck', ok=False)  # paused: nothing ready, working or approved
 
     # --- ticket 06 ---
     def slow_gate(self, seconds):
@@ -581,22 +582,86 @@ class FactoryTests(unittest.TestCase):
 
     # --- ticket 09 ---
 
-    def final_reviews(self): return [c for c in self.launches() if f'path:{self.project}' in c]
+    def final_reviews(self):
+        return [c for c in self.launches() if c[c.index('--worktree') + 1].endswith('-review')]
 
-    def test_final_review_runs_once_in_the_integration_checkout_then_pauses(self):
+    def review_tree(self, feature='demo'): return self.state_dir / 'worktrees' / f'{feature}-review'
+
+    def finish_review(self, result='approved', *extra, feature='demo'):
+        return self.cli('report', 'review', result, '--slowed-by', 'nothing', *extra, project=self.review_tree(feature))
+
+    def test_final_review_runs_supervised_in_its_own_worktree_and_the_factory_pauses_once_it_reports(self):
         self.cli('install', '--feature', 'demo'); self.cli('tick')
         self.build(); self.approve()
         self.assertEqual(self.ledger()['01']['state'], 'merged')
-        reviews = self.final_reviews()
-        self.assertEqual(len(reviews), 1)
-        prompt = reviews[0][reviews[0].index('--prompt') + 1]
-        self.assertIn('Use the ew-factory skill (final review brief) for demo on build/demo', prompt)
-        self.assertIn(str(self.state_dir / 'final-review.md'), prompt)
-        state = self.state()
-        self.assertEqual((state['final_review'], state['final_review_handle'], state['mode']),
-                         ('dispatched', 'term_2', 'paused'))  # the fake numbers each launch
-        self.cli('resume'); self.cli('tick')
+        tip, tree = self.git('rev-parse', 'build/demo'), self.review_tree()
+        entry, state = self.ledger()['review'], self.state()
+        self.assertEqual((entry['state'], entry['branch'], entry['worker_handle'], state['final_review'], state['mode']),
+                         ('working', 'factory/demo-review', 'term_2', 'dispatched', 'running'))  # the fake numbers each launch
+        self.assertEqual(self.git('rev-parse', 'HEAD', cwd=tree), tip)
+        marker = json.loads((tree / '.engineering-workflow-state' / 'factory-ticket.json').read_text())
+        self.assertEqual(marker['ticket'], 'review')
         self.assertEqual(len(self.final_reviews()), 1)
+        prompt = self.prompt(self.final_reviews()[0])
+        self.assertIn(f'Use the ew-factory skill (final review brief) for demo on build/demo up to commit {tip}', prompt)
+        self.assertIn(str(self.state_dir / 'final-review.md'), prompt)
+        self.assertIn(f"report review approved --detach --project '{tree}'", prompt)
+        self.cli('precheck'); self.cli('tick')  # supervised while it works; one review, not one per tick
+        self.assertEqual(len(self.final_reviews()), 1)
+        self.assertIn('final review done', self.finish_review().stdout)
+        self.assertEqual((self.ledger()['review']['state'], self.state()['mode']), ('merged', 'paused'))
+        self.assertFalse(tree.exists())
+        self.assertEqual(self.git('branch', '--list', 'factory/demo-review'), '')
+        self.assertEqual(self.git('rev-parse', 'build/demo'), tip)  # a review merges nothing
+        self.cli('resume')
+        self.assertEqual((len(self.final_reviews()), self.state()['mode']), (1, 'paused'))
+
+    def test_review_findings_wait_for_you_and_requeue_reviews_the_fix_or_approve_accepts_them(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick'); self.build(); self.approve()
+        self.finish_review('blocked', '--reason', '2 findings: a report can be lost')
+        entry = self.ledger()['review']
+        self.assertEqual((entry['state'], entry['reason'], self.state()['mode']),
+                         ('needs-you', '2 findings: a report can be lost', 'running'))
+        self.assertIn('1 needs you', self.cli('status').stdout.splitlines()[0])
+        (self.project / 'fix.txt').write_text('fixed\n'); self.git('add', '-A'); self.git('commit', '-qm', 'Fix the finding')
+        (self.review_tree() / 'stray.txt').write_text('x\n')  # a reviewer that committed anyway: its branch is thrown away
+        self.git('add', '-A', cwd=self.review_tree()); self.git('commit', '-qm', 'stray', cwd=self.review_tree())
+        self.cli('requeue', 'review')
+        self.assertIn('relaunched review in its worktree', self.cli('tick').stdout)
+        tip = self.git('rev-parse', 'build/demo')
+        self.assertIn(f'up to commit {tip}', self.prompt(self.final_reviews()[-1]))
+        self.assertEqual(self.git('rev-parse', 'HEAD', cwd=self.review_tree()), tip)
+        self.finish_review('blocked', '--reason', '1 finding left')
+        self.cli('precheck', ok=False)  # waiting on you costs nothing
+        self.cli('approve', 'review'); self.cli('precheck'); self.cli('tick')  # you accept what is left
+        self.assertEqual((self.ledger()['review']['state'], self.state()['mode']), ('merged', 'paused'))
+
+    def test_factory_upgraded_after_an_unsupervised_review_was_dispatched_still_moves_to_a_queued_feature(self):
+        self.add_feature('next'); self.cli('install', '--feature', 'demo'); self.cli('tick'); self.build(); self.approve()
+        self.finish_review()
+        ledger = self.ledger(); del ledger['review']  # what an older version left: dispatched, paused, no review entry
+        (self.state_dir / 'ledger.json').write_text(json.dumps(ledger))
+        self.cli('queue', 'next')
+        self.assertIn('demo done; now building next', self.cli('resume').stdout)
+
+    def test_ledger_entry_pointing_at_another_tickets_worktree_is_refused_and_that_worktree_is_kept(self):
+        self.add_ticket('02'); self.cli('install', '--feature', 'demo'); self.cli('tick')
+        other = self.state_dir / 'worktrees' / 'demo-02'
+        ledger = self.ledger(); ledger['01']['worktree'] = str(other)
+        (self.state_dir / 'ledger.json').write_text(json.dumps(ledger))
+        self.cli('report', '01', 'approved', '--slowed-by', 'nothing')
+        self.assertEqual((self.ledger()['01']['reason'], other.exists()), ('ledger entry failed validation', True))
+
+    def test_reviewer_that_dies_or_overruns_is_caught_like_any_worker(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick'); self.build(); self.approve()
+        (self.orca_dir / 'dead-term_2').touch()
+        self.assertIn('interrupted review: worker exited without reporting', self.cli('tick').stdout)
+        self.cli('requeue', 'review'); self.cli('tick')
+        ledger = self.ledger()
+        ledger['review']['started_at'] = (datetime.now(timezone.utc) - timedelta(minutes=200)).isoformat()
+        (self.state_dir / 'ledger.json').write_text(json.dumps(ledger))
+        self.assertIn('review capped: time cap', self.cli('tick').stdout)
+        self.assertEqual(self.state()['mode'], 'running')
 
     def test_final_review_waits_while_tickets_are_ready_or_working(self):
         self.add_ticket('02', blocked='01'); self.cli('install', '--feature', 'demo'); self.cli('tick')
@@ -624,8 +689,9 @@ class FactoryTests(unittest.TestCase):
         self.assertEqual(self.ledger()['01']['state'], 'merged')
         self.cli('precheck')
         self.cli('tick')
-        self.assertEqual((len(self.final_reviews()), self.state()['mode']), (1, 'paused'))
-        self.set_state(mode='running')
+        self.assertEqual((len(self.final_reviews()), self.state()['mode']), (1, 'running'))
+        self.finish_review()
+        self.assertEqual(self.state()['mode'], 'paused')
         self.cli('precheck', ok=False)
 
     def test_no_final_review_when_no_ticket_was_ever_started(self):
@@ -633,12 +699,16 @@ class FactoryTests(unittest.TestCase):
         self.git('commit', '-qam', 'triage'); self.cli('install', '--feature', 'demo'); self.cli('tick')
         self.assertEqual((self.launches(), self.state()['mode']), ([], 'running'))
 
-    def test_failed_final_review_launch_still_pauses_without_dispatching(self):
+    def test_failed_final_review_launch_waits_for_you_and_requeue_tries_again(self):
         self.cli('install', '--feature', 'demo'); self.cli('tick'); self.build()
         (self.orca_dir / 'launch-fails').touch()
-        out = self.approve().stdout
-        self.assertIn('final review launch failed', out)
-        self.assertEqual((self.state()['final_review'], self.state()['mode']), ('not-started', 'paused'))
+        self.assertIn('review needs you: worker launch failed', self.approve().stdout)
+        self.assertEqual(self.ledger()['review']['state'], 'needs-you')
+        self.cli('precheck', ok=False)  # no retry every hour
+        self.assertIn('reported no findings to accept', self.cli('approve', 'review', ok=False).stderr)
+        (self.orca_dir / 'launch-fails').unlink(); self.cli('requeue', 'review')
+        self.assertIn('relaunched review in its worktree', self.cli('tick').stdout)
+        self.assertEqual(len(self.final_reviews()), 2)
 
     def test_status_shows_the_final_review_file_once_written(self):
         self.cli('install', '--feature', 'demo')
@@ -740,7 +810,8 @@ class FactoryTests(unittest.TestCase):
         self.assertEqual(self.ledger()['climb']['state'], 'merged')
         self.assertIn('climb merged factory/demo-climb metric 80 -> 45', self.cli('status').stdout)
         self.assertTrue((self.project / 'faster.txt').is_file())
-        self.assertEqual((len(self.final_reviews()), self.state()['mode']), (1, 'paused'))
+        self.assertEqual((len(self.final_reviews()), self.state()['mode']), (1, 'running'))
+        self.assertEqual(self.git('show', 'factory/demo-review:faster.txt'), 'x')  # it reviews the climbed code
 
     def test_unapproved_climb_file_is_skipped(self):
         self.add_climb(status='needs-triage'); self.cli('install', '--feature', 'demo'); self.cli('tick')
@@ -771,21 +842,20 @@ class FactoryTests(unittest.TestCase):
         self.add_feature('next'); self.cli('install', '--feature', 'demo')
         self.assertEqual(self.cli('queue', 'next').stdout.strip(), 'next: next')
         self.assertIn('next: next', self.cli('status').stdout)
-        self.cli('tick'); self.build()
-        out = self.approve().stdout
-        self.assertIn('demo done; now building next', out)
+        self.cli('tick'); self.build(); self.approve()
         review = self.prompt(self.final_reviews()[0])
         tip = self.git('rev-parse', 'build/demo~0')
         self.assertIn(f'on build/demo up to commit {tip}', review)
         self.assertIn(str(self.state_dir / 'final-review.md'), review)
+        self.assertEqual((self.state()['feature'], sorted(self.ledger())), ('demo', ['01', 'review']))  # nothing stacks on unreviewed code
+        self.assertIn('demo done; now building next', self.finish_review().stdout)
         state = self.state()
         self.assertEqual((state['feature'], state['mode'], state['next_features'], state['done_features'],
-                          state['final_review'], state['past_reviews']),
-                         ('next', 'running', [], ['demo'], 'not-started', ['term_2']))
+                          state['final_review']), ('next', 'running', [], ['demo'], 'not-started'))
         self.assertEqual(list(self.state_dir.glob('ledger-demo-*.json'))[0].name[:12], 'ledger-demo-')
         self.assertEqual((sorted(self.ledger()), self.ledger()['01']['branch']), (['01'], 'factory/next-01'))
         pings = [c for c in self.cards() if c[0] == f'path:{self.project}']
-        self.assertIn('BUILT: feature demo built, climbed and sent to final review; now building next', pings[-1])
+        self.assertIn('BUILT: feature demo built, climbed and reviewed; now building next', pings[-1])
         tree = self.state_dir / 'worktrees' / 'next-01'
         (tree / 'n.txt').write_text('x\n')
         self.git('add', '-A', cwd=tree); self.git('commit', '-qm', 'next work', cwd=tree)
@@ -793,12 +863,13 @@ class FactoryTests(unittest.TestCase):
         pings = [c for c in self.cards() if c[0] == f'path:{self.project}']
         self.assertIn('BUILT: next 01 merged into build/demo', pings[-1])
         self.assertIn(str(self.state_dir / 'final-review-next.md'), self.prompt(self.final_reviews()[-1]))
+        self.finish_review(feature='next')
         self.assertEqual(self.state()['mode'], 'paused')  # nothing more queued
 
     def test_daily_ticket_cap_still_counts_todays_starts_once_a_queued_feature_takes_over(self):
         self.add_feature('next'); self.cli('install', '--feature', 'demo'); self.set_state(daily_ticket_cap=1)
-        self.cli('queue', 'next'); self.cli('tick'); self.build()
-        self.assertIn('demo done; now building next', self.approve().stdout)
+        self.cli('queue', 'next'); self.cli('tick'); self.build(); self.approve()
+        self.assertIn('demo done; now building next', self.finish_review().stdout)
         self.assertEqual((self.state()['feature'], self.ledger()), ('next', {}))  # today's one start is spent
         self.cli('precheck', ok=False)
         self.set_state(carried_starts={'2000-01-01': 1})  # another day
@@ -915,7 +986,7 @@ class FactoryTests(unittest.TestCase):
     def test_low_ticket_merges_automatically_with_a_completed_card(self):
         self.cli('install', '--feature', 'demo'); self.cli('tick'); self.build(); self.approve()
         self.assertEqual(self.ledger()['01']['state'], 'merged')
-        self.assertEqual([c[2] for c in self.cards()], ['in-progress', 'completed'])
+        self.assertEqual([c[2] for c in self.cards() if c[0] == f'path:{self.worktree}'], ['in-progress', 'completed'])
 
     def test_blocked_report_shows_needs_you_card(self):
         self.cli('install', '--feature', 'demo'); self.cli('tick')
@@ -945,9 +1016,10 @@ class FactoryTests(unittest.TestCase):
         self.assertIn('card for 01 not updated', self.approve().stdout)
         self.assertEqual(self.ledger()['01']['state'], 'merged')
         (self.orca_dir / 'card-fails').unlink()
-        calls = len(self.cards())
-        self.assertNotIn('not updated', self.cli('tick').stdout)
-        self.assertEqual(len(self.cards()), calls)
+        mine = lambda: [c for c in self.cards() if c[0] == f'path:{self.worktree}']
+        calls = len(mine())
+        self.assertNotIn('card for 01 not updated', self.cli('tick').stdout)
+        self.assertEqual(len(mine()), calls)
 
     def test_failed_card_update_does_not_abort_the_tick_and_is_retried(self):
         self.cli('install', '--feature', 'demo')
@@ -1424,11 +1496,11 @@ class FactoryTests(unittest.TestCase):
                          ('needs-you', "could not confirm Orca's permission mode", 'paused'))
         self.assertIn(['terminal', 'close', '--terminal', 'term_1', '--json'], self.orca_calls())
 
-    def test_final_review_agent_in_bypass_is_stopped_and_not_dispatched(self):
+    def test_final_review_agent_in_bypass_is_stopped_and_the_factory_pauses(self):
         self.cli('install', '--feature', 'demo'); self.cli('tick'); self.build()
         (self.orca_dir / 'screen-term_2').write_text('BYPASS PERMISSIONS on')
         self.assertIn(self.BYPASS, self.approve().stdout)
-        self.assertEqual((self.state()['final_review'], self.state()['mode']), ('not-started', 'paused'))
+        self.assertEqual((self.ledger()['review']['state'], self.state()['mode']), ('needs-you', 'paused'))
         self.assertIn(['terminal', 'close', '--terminal', 'term_2', '--json'], self.orca_calls())
 
     def test_a_hung_gate_is_killed_and_fails_with_timeout(self):
@@ -1455,7 +1527,7 @@ class FactoryTests(unittest.TestCase):
         self.approve('--detach')
         self.assertLess(time.time() - begin, 2.5)
         self.assertEqual(self.ledger()['01']['state'], 'approved')
-        self.wait_for(lambda: self.state()['mode'] == 'paused')
+        self.wait_for(lambda: self.state()['final_review'] == 'dispatched')  # saved as that tick ends
         self.assertEqual(self.ledger()['01']['state'], 'merged')
         last = self.state()['last_tick']
         self.cli('tick', '--detach')
@@ -1476,7 +1548,7 @@ class FactoryTests(unittest.TestCase):
             (self.orca_dir / 'dead-term_1').touch()  # the worker exits once it has reported
         finally:
             holder.kill(); holder.wait(); holder.stdout.close()
-        self.wait_for(lambda: self.state()['mode'] == 'paused')
+        self.wait_for(lambda: self.state()['final_review'] == 'dispatched')  # saved as that tick ends
         entry = self.ledger()['01']
         self.assertEqual((entry['state'], entry['slowed_by']), ('merged', 'nothing'))
 
@@ -1520,7 +1592,7 @@ class FactoryTests(unittest.TestCase):
         self.cli('pause', '--now'); self.cli('requeue', '01'); self.cli('resume')
         self.assertEqual(self.state()['wave'], [])
         self.assertNotIn('wave_ended_at', self.state())
-        self.build(); self.approve()
+        self.build(); self.approve(); self.finish_review()
         state = self.state()
         self.assertEqual((state['mode'], state['final_review']), ('paused', 'dispatched'))
         self.assertTrue(state['wave_ended_at'])
@@ -1809,22 +1881,24 @@ class AoRunnerTests(unittest.TestCase):
         (tree / '.engineering-workflow-state' / 'factory-ticket.json').unlink()
         self.assertIn('Run this from the integration checkout', self.cli('pause', project=tree, ok=False).stderr)
 
-    def test_ao_final_review_runs_on_a_review_branch_at_the_integration_tip(self):
+    def test_ao_final_review_is_a_supervised_session_on_its_own_branch_at_the_integration_tip(self):
         self.install_ao(); self.cli('tick')
         self.build_in(self.ticket_tree())
         self.cli('report', '01', 'approved', '--slowed-by', 'nothing', project=self.ticket_tree())
-        state = self.state()
-        self.assertEqual((state['final_review'], state['final_review_handle'], state['mode']),
-                         ('dispatched', 'ao:demo-3', 'paused'))
-        review = [c for c in self.ao_calls() if c[:1] == ['spawn']][-1]
-        self.assertEqual(review[review.index('--branch') + 1], 'factory/demo-final-review')
-        self.assertEqual(self.git('rev-parse', 'factory/demo-final-review'), self.git('rev-parse', 'build/demo'))
-        prompt = review[review.index('--prompt') + 1]
-        self.assertIn('Use the ew-factory skill (final review brief) for demo on build/demo', prompt)
-        self.assertIn(str(self.state_dir / 'final-review.md'), prompt)
-        self.cli('uninstall')
+        entry, state = self.ledger()['review'], self.state()
+        self.assertEqual((entry['state'], entry['branch'], entry['worker_handle'], state['final_review'], state['mode']),
+                         ('working', 'factory/demo-review', 'ao:demo-3', 'dispatched', 'running'))
+        tree = self.ticket_tree('review')
+        self.assertEqual(self.git('rev-parse', 'HEAD', cwd=tree), self.git('rev-parse', 'build/demo'))
+        brief = self.sends('demo-3')[-1]
+        self.assertIn('Use the ew-factory skill (final review brief) for demo on build/demo', brief)
+        self.assertIn(str(self.state_dir / 'final-review.md'), brief)
+        self.assertIn('Run this from the integration checkout', self.cli('approve', '01', project=tree, ok=False).stderr)
+        self.cli('report', 'review', 'approved', '--slowed-by', 'nothing', project=tree)
+        self.assertEqual((self.ledger()['review']['state'], self.state()['mode']), ('merged', 'paused'))
         self.assertIn(['session', 'kill', 'demo-3'], self.ao_calls())
-        self.assertEqual(self.git('branch', '--list', 'factory/demo-final-review'), '')
+        self.assertEqual(self.git('branch', '--list', 'factory/demo-review'), '')
+        self.assertIn('BUILT: final review of demo is in', self.sends('demo-1')[-1])
 
     def test_ao_uninstall_boots_out_the_heartbeat_and_kills_its_own_relay(self):
         self.install_ao(); self.cli('tick'); self.cli('uninstall')

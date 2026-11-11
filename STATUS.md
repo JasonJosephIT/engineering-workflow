@@ -9,19 +9,19 @@ updated: 2026-11-10
 
 ## Now
 
-v0.5.0 is released and installed (2026-11-10): PR #12 merged as `4eeffbc`, tagged `v0.5.0`,
-runtime updated with `ew-workflow-update` (155 tests, `verify --expected 0.5.0`, upstream tag
-check all pass; `ew-hill-climb` is linked). Rollback: `~/.workflow-backups/20261111T010022789000Z`.
-On `feature/code-owned-climb` (VERSION 0.6.0, PR open against main, 161 tests pass): review
-recommendation R6, the factory scores the climb itself. Not merged, tagged or installed.
+v0.6.0 is released and installed (2026-11-10): PR #13 merged as `b32bf8e`, tagged `v0.6.0`,
+runtime updated with `ew-workflow-update` (162 tests, `verify --expected 0.6.0` and the upstream
+tag check pass). It holds R2, R3 and R6 from the review plus the npm packaging from PR #7.
+Rollback: `~/.workflow-backups/20261111T012638360141Z`. Not published to npm.
+On `feature/supervised-final-review` (VERSION 0.7.0, PR open against main, 166 tests pass): review
+recommendation R5, the final review is a supervised ledger entry.
 Review: `.scratch/factory-review/report.md` + `.html`.
 
 ## Next
 
--1. R6 is in a PR from `feature/code-owned-climb`: merge, tag v0.6.0, reinstall. Waiting on your go.
-   Existing `climb.md` files need a `**Harness:**` line (paths or `none`) before the next install.
--0. Remaining review recommendations, in order: R5 (final review
-   as a supervised ledger entry), R4 (gate the merged tree), R7 (independent AO reviewer),
+-1. Existing `climb.md` files need a `**Harness:**` line (paths or `none`) before the next install.
+-0. Remaining review recommendations, in order: R5 (final review as a supervised ledger entry,
+   in progress), R4 (gate the merged tree), R7 (independent AO reviewer),
    R8 (`factory doctor`), R9 (docs).
 0. v0.4.0 (AO runner, PR #9) released 2026-10-31. New factories use `--runner ao`; the two
    live Orca factories (Aristocrat course-factory-mvp, Herculean iolaus-columns) finish on Orca.
@@ -34,6 +34,17 @@ Review: `.scratch/factory-review/report.md` + `.html`.
 
 ## Decisions
 
+- 2026-11-10: R5, the final review is supervised (v0.7.0). It is ledger entry `review` on
+  `factory/<feature>-review` with its own worktree at the integration tip on both runners (it
+  used to run unsupervised in the integration checkout on Orca), so liveness, caps, Guard and
+  requeue apply. It merges nothing; branch and worktree are dropped when it reports. `approved`
+  = nothing needs you; `blocked` parks it, then `factory approve review` accepts the findings
+  or `factory requeue review` re-reviews at the new tip. The factory now stays `running` until
+  the review is in and only then pauses or starts the next queued feature (it used to do both
+  at dispatch). A failed review launch parks the review instead of pausing the factory.
+  `approve review` works only after the reviewer reported findings. A factory an older version
+  left at "dispatched" counts as reviewed. Orca ledger entries are now valid only for the
+  ticket's own worktree path (a tampered entry could get a sibling's worktree removed).
 - 2026-11-10: R6, the factory scores the climb (v0.6.0). `climb.md` must carry a backticked
   metric command, a direction (`lower|higher is better`, or a target starting `<=` / `>=`) and
   a `**Harness:**` line (paths, or `none`); `install` and `queue` refuse it otherwise. `tick`

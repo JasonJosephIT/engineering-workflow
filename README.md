@@ -1,6 +1,6 @@
 # Engineering workflow
 
-One versioned process for Claude Code, Codex, Gemini CLI and Antigravity. Version **0.6.0**.
+One versioned process for Claude Code, Codex, Gemini CLI and Antigravity. Version **0.7.0**.
 Matt Pocock planning/TDD/review + personal SDD + Ponytail, with Claude Guard,
 portable Autopilot and docs-health. Optional Headroom startup support. No Runpod,
 entertainment, or required TypeSafe dependency.
@@ -11,9 +11,9 @@ Requires Git, Python **3.11+**, and access to this private repository. Clone a
 release, verify it, explicitly select the platform, then install:
 
 ```sh
-git clone --branch v0.6.0 https://github.com/JasonJosephIT/engineering-workflow.git
+git clone --branch v0.7.0 https://github.com/JasonJosephIT/engineering-workflow.git
 cd engineering-workflow
-python3 -B workflow.py verify --expected 0.6.0
+python3 -B workflow.py verify --expected 0.7.0
 python3 -B workflow.py install --scope user --platform codex --dry-run
 python3 -B workflow.py install --scope user --platform codex
 ```
@@ -23,7 +23,7 @@ login and no repository access. This needs Node 18+ and Python 3.11+. Run any
 `workflow.py` command through `ares-workflow`:
 
 ```sh
-npx ares-workflow verify --expected 0.6.0
+npx ares-workflow verify --expected 0.7.0
 npx ares-workflow install --scope user --platform codex
 ```
 
@@ -162,10 +162,21 @@ before the worker starts, and again before merging: once where the climb branche
 and once at its tip. No gain, or a change to a harness path, holds the climb for you;
 `factory approve climb` still merges it. `factory status` shows
 `metric <baseline> -> <final>`. A climb whose metric gives no number waits for you
-before any worker starts: fix it on the integration branch, then `factory requeue climb`. `factory queue FEATURE` lines up another feature whose
-tickets are approved: once the final review is dispatched, the factory archives the
-ledger and starts building that feature on the same integration branch, instead of
-pausing. Each ticket a queued feature merges pings you with a `BUILT:` line on the
+before any worker starts: fix it on the integration branch, then `factory requeue climb`. 
+
+**The final review is supervised.** It is ledger entry `review` on
+`factory/<feature>-review`, in a worktree of its own at the integration tip, with the
+same liveness check, turn and time caps and Guard rules as a ticket worker. It merges
+nothing: findings go to `final-review.md` in the factory state folder, and the branch
+and worktree are dropped once it reports. `approved` means nothing needs you, and the
+factory pauses or moves on. `blocked` parks it as needs-you with its reason: fix the
+findings on the integration branch and `factory requeue review` to review again at
+the new tip, or `factory approve review` to accept them.
+
+`factory queue FEATURE` lines up another feature whose
+tickets are approved: once the final review is in, clean or accepted by you, the
+factory archives the ledger and starts building that feature on the same integration
+branch, instead of pausing. Nothing queued starts on unreviewed code. Each ticket a queued feature merges pings you with a `BUILT:` line on the
 integration checkout's Orca card, or through the AO relay. The review for each
 queued feature goes to `final-review-<feature>.md`.
 
