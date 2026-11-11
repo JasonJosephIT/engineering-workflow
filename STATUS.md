@@ -15,16 +15,18 @@ tag check pass). Since the 2026-11-10 review it holds R2, R3 (v0.5.0), R6 (v0.6.
 Rollback: `~/.workflow-backups/20261111T020926104459Z`. Not published to npm.
 v0.8.0 (R4, the gate runs on the merged tree) is merged as `87847f1` (PR #15); the 2026-11-11
 session check reports the installed runtime as v0.8.0 at that commit, integrity verified.
-On `claude/fable-adapter-ew-skill-168c24` (VERSION 0.9.0): new `ew-fable` skill
-(`skills/fable/SKILL.md`), a Fable 5.2 adapter, plus a pointer to it in `adapters/claude.md`.
-PR #16 is open against main. Not merged, tagged or installed.
+v0.9.0 (new `ew-fable` skill, `skills/fable/SKILL.md`, a Fable 5.2 adapter, plus a pointer to
+it in `adapters/claude.md`) is merged as `2697d03` (PR #16, CI green) and tagged `v0.9.0`.
+Not installed: `ew-workflow-update v0.9.0` stopped at its test step on 2026-11-11, so the
+runtime is still v0.8.0 (see Open items).
 Review: `.scratch/factory-review/report.md` + `.html`.
 
 ## Next
 
 -1. Existing `climb.md` files need a `**Harness:**` line (paths or `none`) before the next install.
--1. `ew-fable` (0.9.0) is on `claude/fable-adapter-ew-skill-168c24`: PR #16 is open: read the
-    skill, then merge, tag v0.9.0, reinstall. Waiting on your go.
+-1. Install v0.9.0. Blocked by `test_more_build_slots_let_gates_run_together` on this Mac.
+    Either rerun `ew-workflow-update v0.9.0` when the machine is quiet, or change the test to
+    check that the two gates overlap and release that as v0.9.1. Waiting on your choice.
 -0. Remaining review recommendations, in order: R7 (independent AO reviewer),
    R8 (`factory doctor`), R9 (docs).
 0. v0.4.0 (AO runner, PR #9) released 2026-10-31. New factories use `--runner ao`; the two
@@ -263,6 +265,13 @@ Review: `.scratch/factory-review/report.md` + `.html`.
   main, deploys, publishes issues or uses bypass permissions.
 
 ## Open items / waiting on
+
+- `FactoryTests.test_more_build_slots_let_gates_run_together` is load-sensitive: it allows 1.9 s
+  for two parallel 1 s gates. On 2026-11-11 (load average 8 to 31 from other agents) it took 2.0
+  to 2.9 s in 9 of 10 runs on this Mac and passed in CI. A diagnostic run showed both gates
+  start and end together, so parallel slots work; the time goes to process start-up (0.5 to
+  1.0 s before the gate script runs). `ew-workflow-update` runs the suite before installing,
+  so this test blocks updates whenever the machine is busy.
 
 - `factory gate` (run by workers) still takes the tick lock after its run to record times, so
   it can wait behind a tick; with `build_slots 1` it already waits for the slot, so no change yet.
