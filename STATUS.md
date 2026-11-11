@@ -17,14 +17,14 @@ v0.8.0 (R4, the gate runs on the merged tree) is merged as `87847f1` (PR #15); t
 session check reports the installed runtime as v0.8.0 at that commit, integrity verified.
 On `claude/fable-adapter-ew-skill-168c24` (VERSION 0.9.0): new `ew-fable` skill
 (`skills/fable/SKILL.md`), a Fable 5.2 adapter, plus a pointer to it in `adapters/claude.md`.
-Not pushed, merged, tagged or installed.
+PR #16 is open against main. Not merged, tagged or installed.
 Review: `.scratch/factory-review/report.md` + `.html`.
 
 ## Next
 
 -1. Existing `climb.md` files need a `**Harness:**` line (paths or `none`) before the next install.
--1. `ew-fable` (0.9.0) is on `claude/fable-adapter-ew-skill-168c24`: read the skill, then PR,
-    merge, tag v0.9.0, reinstall. Waiting on your go.
+-1. `ew-fable` (0.9.0) is on `claude/fable-adapter-ew-skill-168c24`: PR #16 is open: read the
+    skill, then merge, tag v0.9.0, reinstall. Waiting on your go.
 -0. Remaining review recommendations, in order: R7 (independent AO reviewer),
    R8 (`factory doctor`), R9 (docs).
 0. v0.4.0 (AO runner, PR #9) released 2026-10-31. New factories use `--runner ao`; the two
