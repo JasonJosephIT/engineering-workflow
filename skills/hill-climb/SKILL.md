@@ -11,6 +11,15 @@ score, target, guardrails and budget, so step 1 is reading it, not asking. Nobod
 answers questions: where a step says "tell the user" or "stop", report blocked with
 the reason instead. The factory's gate command is always a guardrail.
 
+The factory scores the climb itself and does not take your word for it. Before
+merging it runs the climb file's metric command in a fresh checkout of your
+committed code, and of the commit you started from: no gain, or any change to a
+path on the climb file's `Harness:` line, holds the merge for the person. Only
+commits count; uncommitted or ignored files do not. So the metric and its harness
+are already built and frozen: never edit them (step 2 is done; if the harness is
+wrong, report blocked). Keep the log at `hill-climb/<feature>/log.md`,
+one folder per feature. Work in this worktree only: no parallel worktrees.
+
 An agent will push up any score it can measure. Your job is to make that score honest, lock it before climbing, and stop when the top is reached, progress stalls, or the budget runs out.
 
 ## 1. Define the score

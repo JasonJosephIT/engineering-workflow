@@ -1,6 +1,6 @@
 # Engineering workflow
 
-One versioned process for Claude Code, Codex, Gemini CLI and Antigravity. Version **0.5.0**.
+One versioned process for Claude Code, Codex, Gemini CLI and Antigravity. Version **0.6.0**.
 Matt Pocock planning/TDD/review + personal SDD + Ponytail, with Claude Guard,
 portable Autopilot and docs-health. Optional Headroom startup support. No Runpod,
 entertainment, or required TypeSafe dependency.
@@ -11,9 +11,9 @@ Requires Git, Python **3.11+**, and access to this private repository. Clone a
 release, verify it, explicitly select the platform, then install:
 
 ```sh
-git clone --branch v0.5.0 https://github.com/JasonJosephIT/engineering-workflow.git
+git clone --branch v0.6.0 https://github.com/JasonJosephIT/engineering-workflow.git
 cd engineering-workflow
-python3 -B workflow.py verify --expected 0.5.0
+python3 -B workflow.py verify --expected 0.6.0
 python3 -B workflow.py install --scope user --platform codex --dry-run
 python3 -B workflow.py install --scope user --platform codex
 ```
@@ -138,7 +138,19 @@ line, and the goal: metric command, target, guardrails and round budget. Once ev
 ticket has merged, the factory runs one climb worker (`ew-hill-climb`, through the
 ew-factory climb brief) on `factory/<feature>-climb`. Its id is `climb`, and it is
 gated, capped, merged, approved and requeued like a ticket. The final review runs
-after the climb merges. `factory queue FEATURE` lines up another feature whose
+after the climb merges.
+
+The factory scores the climb itself. `**Metric:**` must hold the command in backticks
+and say which way is better (`lower is better`, `higher is better`, or a target that
+starts with `<=` / `>=`). `**Harness:**` must list the paths that produce the score,
+comma-separated, or say `none`. `install` and `queue` refuse a climb file without them.
+The command runs in a fresh checkout of committed code, so it must set itself up and
+print exactly one number on its last line. The factory runs it at the integration tip
+before the worker starts, and again before merging: once where the climb branched off
+and once at its tip. No gain, or a change to a harness path, holds the climb for you;
+`factory approve climb` still merges it. `factory status` shows
+`metric <baseline> -> <final>`. A climb whose metric gives no number waits for you
+before any worker starts: fix it on the integration branch, then `factory requeue climb`. `factory queue FEATURE` lines up another feature whose
 tickets are approved: once the final review is dispatched, the factory archives the
 ledger and starts building that feature on the same integration branch, instead of
 pausing. Each ticket a queued feature merges pings you with a `BUILT:` line on the

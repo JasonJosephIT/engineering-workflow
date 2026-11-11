@@ -9,17 +9,18 @@ updated: 2026-11-10
 
 ## Now
 
-v0.5.0 is in PR #12 against main (branch `claude/engineering-workflow-plugin-review-9bf650`;
-not merged, not tagged, not installed): it carries the unreleased plugin packaging, climb and
-queue work from main plus two fixes from the 2026-11-10 review. 155 tests and
-`verify --expected 0.5.0` pass. The installed runtime is still tag v0.4.0 (no climb, no queue).
+v0.5.0 is released and installed (2026-11-10): PR #12 merged as `4eeffbc`, tagged `v0.5.0`,
+runtime updated with `ew-workflow-update` (155 tests, `verify --expected 0.5.0`, upstream tag
+check all pass; `ew-hill-climb` is linked). Rollback: `~/.workflow-backups/20261111T010022789000Z`.
+On `feature/code-owned-climb` (VERSION 0.6.0, PR open against main, 161 tests pass): review
+recommendation R6, the factory scores the climb itself. Not merged, tagged or installed.
 Review: `.scratch/factory-review/report.md` + `.html`.
 
 ## Next
 
--1. Release v0.5.0: merge PR #12, tag, reinstall the runtime, confirm a fresh session lists
-   `ew-hill-climb`. Waiting on your go.
--0. Remaining review recommendations, in order: R6 (code-owned climb score), R5 (final review
+-1. R6 is in a PR from `feature/code-owned-climb`: merge, tag v0.6.0, reinstall. Waiting on your go.
+   Existing `climb.md` files need a `**Harness:**` line (paths or `none`) before the next install.
+-0. Remaining review recommendations, in order: R5 (final review
    as a supervised ledger entry), R4 (gate the merged tree), R7 (independent AO reviewer),
    R8 (`factory doctor`), R9 (docs).
 0. v0.4.0 (AO runner, PR #9) released 2026-10-31. New factories use `--runner ao`; the two
@@ -32,6 +33,15 @@ Review: `.scratch/factory-review/report.md` + `.html`.
 
 ## Decisions
 
+- 2026-11-10: R6, the factory scores the climb (v0.6.0). `climb.md` must carry a backticked
+  metric command, a direction (`lower|higher is better`, or a target starting `<=` / `>=`) and
+  a `**Harness:**` line (paths, or `none`); `install` and `queue` refuse it otherwise. `tick`
+  runs the metric in a throwaway checkout of committed code, never the worker's tree, and never
+  trusts the ledger's baseline: at the integration tip before the worker starts, then before
+  merging at the climb's merge-base and at its tip. No gain or a changed harness path parks the
+  climb; `approve` overrides. One run per measurement (no median yet). The log moves to
+  `hill-climb/<feature>/log.md`, and the unattended climb uses no parallel worktrees.
+  Not built from R6: climb-specific turn and time caps (no live climb has capped yet).
 - 2026-11-10: Review fixes R2 and R3, released as v0.5.0. `factory report` waits at most 1 s
   for the tick lock; when a tick holds it (through a merge gate, say) the report goes to
   `reports/<ticket>.json` in the factory state dir and the next lock holder files it. Reconcile
