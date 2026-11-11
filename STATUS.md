@@ -18,15 +18,16 @@ session check reports the installed runtime as v0.8.0 at that commit, integrity 
 v0.9.0 (new `ew-fable` skill, `skills/fable/SKILL.md`, a Fable 5.2 adapter, plus a pointer to
 it in `adapters/claude.md`) is merged as `2697d03` (PR #16, CI green) and tagged `v0.9.0`.
 Not installed: `ew-workflow-update v0.9.0` stopped at its test step on 2026-11-11, so the
-runtime is still v0.8.0 (see Open items).
+runtime is still v0.8.0.
+On `fix/gate-overlap-test` (VERSION 0.9.1): the load-sensitive build-slots test now checks that
+the two gates overlap. Not merged, tagged or installed.
 Review: `.scratch/factory-review/report.md` + `.html`.
 
 ## Next
 
 -1. Existing `climb.md` files need a `**Harness:**` line (paths or `none`) before the next install.
--1. Install v0.9.0. Blocked by `test_more_build_slots_let_gates_run_together` on this Mac.
-    Either rerun `ew-workflow-update v0.9.0` when the machine is quiet, or change the test to
-    check that the two gates overlap and release that as v0.9.1. Waiting on your choice.
+-1. v0.9.1 (the test fix) is on `fix/gate-overlap-test`: PR, merge, tag v0.9.1, then
+    `ew-workflow-update v0.9.1`. Approved 2026-11-11.
 -0. Remaining review recommendations, in order: R7 (independent AO reviewer),
    R8 (`factory doctor`), R9 (docs).
 0. v0.4.0 (AO runner, PR #9) released 2026-10-31. New factories use `--runner ao`; the two
@@ -40,6 +41,13 @@ Review: `.scratch/factory-review/report.md` + `.html`.
 
 ## Decisions
 
+- 2026-11-11: v0.9.1, the build-slots test checks overlap, not wall-clock time.
+  `test_more_build_slots_let_gates_run_together` allowed 1.9 s for two parallel 1 s gates. On a
+  busy Mac (load average 8 to 31) it took 2.0 to 2.9 s in 9 of 10 runs, passed in CI, and
+  stopped `ew-workflow-update v0.9.0` at its test step. A diagnostic run showed both gates start
+  and end together; the time went to process start-up. The test now reads the gate run log and
+  expects start, start, end, end. It fails with one build slot and passes under the same load.
+  Test-only change; `factory.py` is untouched. v0.9.0 stays tagged but was never installed.
 - 2026-11-11: `ew-fable`, a Fable 5.2 adapter skill (v0.9.0). Source: Matt Shumer's video
   "You're Prompting Fable 5.2 Wrong" (2026-11-11), one practitioner's report, recorded in
   SOURCES.md and labelled in the skill as unmeasured here. It covers the shape of the work (one
@@ -265,13 +273,6 @@ Review: `.scratch/factory-review/report.md` + `.html`.
   main, deploys, publishes issues or uses bypass permissions.
 
 ## Open items / waiting on
-
-- `FactoryTests.test_more_build_slots_let_gates_run_together` is load-sensitive: it allows 1.9 s
-  for two parallel 1 s gates. On 2026-11-11 (load average 8 to 31 from other agents) it took 2.0
-  to 2.9 s in 9 of 10 runs on this Mac and passed in CI. A diagnostic run showed both gates
-  start and end together, so parallel slots work; the time goes to process start-up (0.5 to
-  1.0 s before the gate script runs). `ew-workflow-update` runs the suite before installing,
-  so this test blocks updates whenever the machine is busy.
 
 - `factory gate` (run by workers) still takes the tick lock after its run to record times, so
   it can wait behind a tick; with `build_slots 1` it already waits for the slot, so no change yet.

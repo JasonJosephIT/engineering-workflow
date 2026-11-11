@@ -28,9 +28,9 @@
   },
   "files": {
     "LICENSE": "1ff535e3e56012b4b3af3a3418968032d4da65977fe302952019e33c5304a7cd",
-    "README.md": "4640a53abb17eb0eb26583cd182b850ccf83c5e86042424dc68f246c2de15b3b",
+    "README.md": "1060be5ea0b696513524eee16df5220da98d221659e535bf65fa8fc5210d5bc4",
     "SOURCES.md": "7126d967425da7d17c6304241b72b575d5de626a7dff5867c638834bc3821027",
-    "VERSION": "9d8c94f1ad3ea96b1e2ac4914fda4cb93c76b4a3e0d8cc6dd8976d6c0b227d15",
+    "VERSION": "179a5390966e85c2071a87c1b31de13df67460665196f6529f8c4986842f81e5",
     "adapters/agy.md": "5306fc7efe9725375e7967dc95f9d9909127f0f44f8f4bd2ccb6b9c74b5255a9",
     "adapters/claude.md": "dfb685293b0b587837b96f16e88342423aba2704b81a8a5bf7cb2fc95363e4fe",
     "adapters/codex.md": "87b2d59b19c608e7aa4aa2de93716e42a0a4892dc5c0255b234b6850b6620c13",
@@ -164,7 +164,7 @@
     "workflow.py": "2815832eaaca586fbdb84bca002c5de667a4746b8a55a076513864b62d258ddc"
   },
   "name": "engineering-workflow",
-  "release": "v0.9.0",
+  "release": "v0.9.1",
   "repository": "https://github.com/JasonJosephIT/engineering-workflow.git",
   "schema": 1,
   "skills": {
@@ -214,5 +214,5 @@
     "ew-verification-before-completion": "skills/verification-before-completion",
     "ew-workflow-update": "skills/workflow-update"
   },
-  "version": "0.9.0"
+  "version": "0.9.1"
 }
