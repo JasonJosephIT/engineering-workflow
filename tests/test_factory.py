@@ -181,9 +181,9 @@ class FactoryTests(unittest.TestCase):
         self.cli('gate', ok=False)
 
     def test_pre_merge_gate_runs_the_integration_branch_script_not_the_workers(self):
-        self.cli('install', '--feature', 'demo'); self.cli('tick')
         (self.project / '.engineering-workflow' / 'gates.sh').write_text('echo "GATES: FAIL tests"\n')
         self.git('commit', '-qam', 'The project gate fails')
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
         (self.worktree / '.engineering-workflow' / 'gates.sh').write_text('echo "GATES: PASS"\n')
         self.git('commit', '-qam', 'Worker rewrites its gate', cwd=self.worktree)
         before = self.git('rev-parse', 'build/demo')
@@ -256,6 +256,45 @@ class FactoryTests(unittest.TestCase):
         self.assertEqual(self.git('rev-parse', 'build/demo'), before)
         self.assertEqual(self.git('status', '--porcelain'), '')
         self.assertTrue(self.worktree.exists())
+
+    def test_two_tickets_that_pass_alone_but_break_together_do_not_both_merge(self):
+        (self.project / '.engineering-workflow' / 'gates.sh').write_text(
+            'if [ -f a.txt ] && [ -f b.txt ]; then echo "GATES: FAIL clash"; exit 1; fi\necho "GATES: PASS"\n')
+        self.git('commit', '-qam', 'A gate that only the combination fails')
+        self.add_ticket('02'); self.cli('install', '--feature', 'demo'); self.cli('tick')  # both branch off the same tip
+        for number, name in (('01', 'a.txt'), ('02', 'b.txt')):
+            tree = self.state_dir / 'worktrees' / f'demo-{number}'
+            (tree / name).write_text('x\n'); self.git('add', '-A', cwd=tree); self.git('commit', '-qm', name, cwd=tree)
+            self.cli('report', number, 'approved', '--slowed-by', 'nothing', project=tree)
+        ledger = self.ledger()
+        self.assertEqual((ledger['01']['state'], ledger['02']['state'], ledger['02']['reason']),
+                         ('merged', 'needs-you', 'gates failed on the ticket branch'))
+        self.assertEqual(self.git('ls-tree', '--name-only', 'build/demo', 'a.txt', 'b.txt'), 'a.txt')  # the tip stays green
+
+    def test_worktree_left_off_its_claim_branch_is_not_gated_in_place_of_the_branch(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        self.git('checkout', '-q', '--detach', cwd=self.worktree); self.build()  # the work is on no branch
+        self.approve()
+        entry = self.ledger()['01']
+        self.assertEqual((entry['state'], entry['reason']), ('needs-you', 'worktree is not on factory/demo-01'))
+
+    def test_integration_branch_that_moves_during_the_gate_sends_the_ticket_back_instead_of_merging_ungated(self):
+        (self.project / '.engineering-workflow' / 'gates.sh').write_text(  # someone commits while the gate runs
+            'git -C "$(dirname "$0")/.." commit -q --allow-empty -m "pushed meanwhile"\necho "GATES: PASS"\n')
+        self.git('commit', '-qam', 'A gate during which the integration branch moves')
+        self.cli('install', '--feature', 'demo'); self.cli('tick'); self.build(); self.approve()
+        entry = self.ledger()['01']
+        self.assertEqual((entry['state'], entry['reason']), ('needs-you', 'build/demo moved during the gate'))
+        self.assertEqual(self.git('ls-tree', '--name-only', 'build/demo', 'thing.txt'), '')
+
+    def test_join_that_fails_without_a_conflict_is_not_called_a_conflict(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick'); self.build()
+        (self.project / 'new.txt').write_text('theirs\n'); self.git('add', '-A'); self.git('commit', '-qm', 'Tip moves on')
+        git_dir = Path(self.git('rev-parse', '--absolute-git-dir', cwd=self.worktree))
+        (git_dir / 'index.lock').touch()  # what a killed git leaves behind
+        self.approve()
+        entry = self.ledger()['01']
+        self.assertEqual((entry['state'], entry['reason']), ('needs-you', 'could not merge build/demo into the ticket branch'))
 
     def test_report_blocked_records_the_reason(self):
         self.cli('install', '--feature', 'demo'); self.cli('tick')

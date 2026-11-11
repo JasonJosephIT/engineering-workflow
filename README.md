@@ -1,6 +1,6 @@
 # Engineering workflow
 
-One versioned process for Claude Code, Codex, Gemini CLI and Antigravity. Version **0.7.0**.
+One versioned process for Claude Code, Codex, Gemini CLI and Antigravity. Version **0.8.0**.
 Matt Pocock planning/TDD/review + personal SDD + Ponytail, with Claude Guard,
 portable Autopilot and docs-health. Optional Headroom startup support. No Runpod,
 entertainment, or required TypeSafe dependency.
@@ -11,9 +11,9 @@ Requires Git, Python **3.11+**, and access to this private repository. Clone a
 release, verify it, explicitly select the platform, then install:
 
 ```sh
-git clone --branch v0.7.0 https://github.com/JasonJosephIT/engineering-workflow.git
+git clone --branch v0.8.0 https://github.com/JasonJosephIT/engineering-workflow.git
 cd engineering-workflow
-python3 -B workflow.py verify --expected 0.7.0
+python3 -B workflow.py verify --expected 0.8.0
 python3 -B workflow.py install --scope user --platform codex --dry-run
 python3 -B workflow.py install --scope user --platform codex
 ```
@@ -23,7 +23,7 @@ login and no repository access. This needs Node 18+ and Python 3.11+. Run any
 `workflow.py` command through `ares-workflow`:
 
 ```sh
-npx ares-workflow verify --expected 0.7.0
+npx ares-workflow verify --expected 0.8.0
 npx ares-workflow install --scope user --platform codex
 ```
 
@@ -131,6 +131,10 @@ line is `GATES: PASS`.
 Defaults: concurrency 3, build_slots 1, daily_ticket_cap 10, stop_if_waiting 5,
 max_turns 100, max_minutes 90. The heartbeat runs hourly on `--model sonnet`.
 `daily_ticket_cap` counts every ticket started that UTC day, across queued features.
+Before a ticket merges, the factory merges the integration tip into the ticket branch
+and runs the gate on that: the tree it gates is the tree it merges, so two tickets that
+each pass alone cannot break the integration branch together. A conflict or a failed
+gate parks the ticket; a requeued worker then continues from the joined branch.
 A worker's `report` never waits on a running tick: when the tick holds the factory
 lock (through a merge gate, say) the report is left in `reports/` and filed by the next tick.
 Orca launches Claude in bypass mode by default, so the factory refuses to keep

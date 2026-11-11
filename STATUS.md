@@ -9,19 +9,19 @@ updated: 2026-11-10
 
 ## Now
 
-v0.6.0 is released and installed (2026-11-10): PR #13 merged as `b32bf8e`, tagged `v0.6.0`,
-runtime updated with `ew-workflow-update` (162 tests, `verify --expected 0.6.0` and the upstream
-tag check pass). It holds R2, R3 and R6 from the review plus the npm packaging from PR #7.
-Rollback: `~/.workflow-backups/20261111T012638360141Z`. Not published to npm.
-On `feature/supervised-final-review` (VERSION 0.7.0, PR open against main, 166 tests pass): review
-recommendation R5, the final review is a supervised ledger entry.
+v0.7.0 is released and installed (2026-11-10): PR #14 merged as `8ead201`, tagged `v0.7.0`,
+runtime updated with `ew-workflow-update` (166 tests, `verify --expected 0.7.0` and the upstream
+tag check pass). Since the 2026-11-10 review it holds R2, R3 (v0.5.0), R6 (v0.6.0) and R5 (v0.7.0).
+Rollback: `~/.workflow-backups/20261111T020926104459Z`. Not published to npm.
+On `feature/gate-merged-tree` (VERSION 0.8.0, PR open against main): review recommendation R4,
+the gate runs on the merged tree. Not merged, tagged or installed.
 Review: `.scratch/factory-review/report.md` + `.html`.
 
 ## Next
 
 -1. Existing `climb.md` files need a `**Harness:**` line (paths or `none`) before the next install.
--0. Remaining review recommendations, in order: R5 (final review as a supervised ledger entry,
-   in progress), R4 (gate the merged tree), R7 (independent AO reviewer),
+-1. R4 is in a PR from `feature/gate-merged-tree`: merge, tag v0.8.0, reinstall. Waiting on your go.
+-0. Remaining review recommendations, in order: R7 (independent AO reviewer),
    R8 (`factory doctor`), R9 (docs).
 0. v0.4.0 (AO runner, PR #9) released 2026-10-31. New factories use `--runner ao`; the two
    live Orca factories (Aristocrat course-factory-mvp, Herculean iolaus-columns) finish on Orca.
@@ -34,6 +34,14 @@ Review: `.scratch/factory-review/report.md` + `.html`.
 
 ## Decisions
 
+- 2026-11-10: R4, gate the merged tree (v0.8.0). Before a ticket (or the climb) merges, `tick`
+  merges the integration tip into the ticket branch, in the ticket's own worktree, and gates
+  that; the `--no-ff` merge into the integration branch then has the gated tree. A conflict is
+  found there, before the gate is paid for. This replaces the Idea Shelf's "post-merge verifier
+  on the integration tip". The ticket branch gains a merge commit made by the factory.
+  A worktree left off its claim branch is refused, a join that fails without a conflict says
+  so, and a ticket whose integration branch moved during the gate goes back to needs-you
+  (`approve` gates the new tip) instead of merging ungated.
 - 2026-11-10: R5, the final review is supervised (v0.7.0). It is ledger entry `review` on
   `factory/<feature>-review` with its own worktree at the integration tip on both runners (it
   used to run unsupervised in the integration checkout on Orca), so liveness, caps, Guard and

@@ -641,9 +641,20 @@ def climb_hold(state, entry):
 
 
 def gate_ticket(state, entry):
-    """Return a needs-you reason, or None when the ticket branch is clean and passes its gate."""
-    if git("status", "--porcelain", cwd=entry["worktree"]) != "":
+    """Return a needs-you reason, or None when the ticket branch, brought up to the integration tip, is clean
+    and passes its gate. The tree that is gated is then the tree that merges: tickets that each pass alone
+    cannot break the integration branch together."""
+    worktree, target = entry["worktree"], state["integration_branch"]
+    if git("status", "--porcelain", cwd=worktree) != "":
         return "uncommitted changes in the worktree"
+    if git("branch", "--show-current", cwd=worktree) != entry["branch"]:  # the gate would test a tree that never merges
+        return f"worktree is not on {entry['branch']}"
+    try: joined = git("merge", "--no-edit", target, cwd=worktree, timeout=300)
+    except subprocess.TimeoutExpired: joined = None
+    if joined is None:  # the conflict merge_ticket would hit, found before the gate is paid for
+        conflict = git("diff", "--name-only", "--diff-filter=U", cwd=worktree)
+        git("merge", "--abort", cwd=worktree)
+        return "merge conflict" if conflict else f"could not merge {target} into the ticket branch"
     # the integration branch's script: the worker can rewrite the ticket branch's copy
     passed, output, waited, ran = queued_gate(state["state_dir"], entry["worktree"],
                                               Path(state["integration_checkout"]) / GATES)
@@ -673,6 +684,8 @@ def integration_checkout(state):
 def merge_ticket(state, entry):
     """Merge into the integration branch; return a needs-you reason, or None when merged."""
     checkout = integration_checkout(state)
+    if git("merge-base", "--is-ancestor", state["integration_branch"], entry["branch"], cwd=checkout) is None:
+        return f"{state['integration_branch']} moved during the gate"  # approve or requeue gates the new tip
     try:
         merged = git("merge", "--no-ff", "--no-edit", entry["branch"], cwd=checkout, timeout=300)
     except subprocess.TimeoutExpired:

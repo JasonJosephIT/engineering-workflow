@@ -103,7 +103,9 @@ a FAIL (fail closed). `factory install` writes a starter from the project's own
 commands and asks you to approve it.
 
 The worker runs it while working. `tick` runs it again on the ticket branch before
-merging and trusts only its own run, never the agent's claim. Both always run it
+merging and trusts only its own run, never the agent's claim. Since v0.8.0 that run is on the
+ticket branch with the integration tip merged in (in the ticket's own worktree), so the
+gated tree is the merged tree and tickets that pass alone cannot break the tip together. Both always run it
 through the build queue: `workflow.py factory gate`, never `gates.sh` directly.
 
 ## Build queue
