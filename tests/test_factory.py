@@ -734,6 +734,15 @@ class FactoryTests(unittest.TestCase):
         self.assertIn(str(self.state_dir / 'final-review-next.md'), self.prompt(self.final_reviews()[-1]))
         self.assertEqual(self.state()['mode'], 'paused')  # nothing more queued
 
+    def test_daily_ticket_cap_still_counts_todays_starts_once_a_queued_feature_takes_over(self):
+        self.add_feature('next'); self.cli('install', '--feature', 'demo'); self.set_state(daily_ticket_cap=1)
+        self.cli('queue', 'next'); self.cli('tick'); self.build()
+        self.assertIn('demo done; now building next', self.approve().stdout)
+        self.assertEqual((self.state()['feature'], self.ledger()), ('next', {}))  # today's one start is spent
+        self.cli('precheck', ok=False)
+        self.set_state(carried_starts={'2000-01-01': 1})  # another day
+        self.cli('tick'); self.assertEqual(self.ledger()['01']['branch'], 'factory/next-01')
+
     def test_queue_refuses_unknown_or_duplicate_features_and_ticket_worktrees(self):
         self.add_feature('next'); self.cli('install', '--feature', 'demo')
         self.assertIn('No ticket files in .scratch/nope/issues/', self.cli('queue', 'nope', ok=False).stderr)
@@ -1391,6 +1400,32 @@ class FactoryTests(unittest.TestCase):
         self.cli('tick', '--detach')
         self.wait_for(lambda: self.state()['last_tick'] != last)
         self.assertIn('merged 01', (self.state_dir / 'tick.log').read_text())
+
+    def test_report_made_while_a_tick_holds_the_lock_returns_at_once_and_is_not_lost(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick'); self.build()
+        holder = subprocess.Popen([sys.executable, '-c', 'import fcntl,sys,time; f=open(sys.argv[1],"a"); '
+                                   'fcntl.flock(f, fcntl.LOCK_EX); print(1, flush=True); time.sleep(8)',
+                                   str(self.state_dir / 'tick.lock')], stdout=subprocess.PIPE, text=True)
+        try:  # a tick holds its lock through a pre-merge gate, which can outlast the worker's tool call
+            holder.stdout.readline()
+            self.assertIn('Ticket ../ledger is not working', self.cli('report', '../ledger', 'approved', ok=False).stderr)
+            begin = time.time()
+            self.approve('--detach')
+            self.assertLess(time.time() - begin, 5)
+            (self.orca_dir / 'dead-term_1').touch()  # the worker exits once it has reported
+        finally:
+            holder.kill(); holder.wait(); holder.stdout.close()
+        self.wait_for(lambda: self.state()['mode'] == 'paused')
+        entry = self.ledger()['01']
+        self.assertEqual((entry['state'], entry['slowed_by']), ('merged', 'nothing'))
+
+    def test_report_files_a_worker_plants_never_wedge_the_factory(self):
+        self.cli('install', '--feature', 'demo'); self.cli('tick')
+        reports = self.state_dir / 'reports'
+        (reports / '01.json').mkdir(parents=True); (reports / '01.json' / 'kept').write_text('x')
+        (reports / '02.json').write_text('not json'); os.mkfifo(reports / '03.json')
+        self.cli('tick'); self.cli('status')
+        self.assertEqual((self.ledger()['01']['state'], list(reports.iterdir())), ('working', []))
 
     def test_precheck_runs_while_paused_with_a_working_ticket_and_tick_starts_nothing(self):
         self.add_ticket('02'); self.cli('install', '--feature', 'demo'); self.set_state(concurrency=1); self.cli('tick')

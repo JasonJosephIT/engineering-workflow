@@ -2,20 +2,26 @@
 status: active
 progress: 100
 next_date: 2026-10-29
-updated: 2026-10-31
+updated: 2026-11-10
 ---
 
 # STATUS
 
 ## Now
 
-Factory mode v0.3.0 is merged to main (tickets 01-10 merged, final
-review done and its findings fixed): 127 tests and `verify --expected 0.3.0` pass;
-Merged to main via PR #6 (c398dd6) on 2026-10-29; not yet tagged. Build log:
-`.engineering-workflow-state/sdd/factory-mode/progress.md`.
+v0.5.0 is prepared on branch `claude/engineering-workflow-plugin-review-9bf650` (committed,
+not pushed, not tagged, not installed): it carries the unreleased plugin packaging, climb and
+queue work from main plus two fixes from the 2026-11-10 review. 155 tests and
+`verify --expected 0.5.0` pass. The installed runtime is still tag v0.4.0 (no climb, no queue).
+Review: `.scratch/factory-review/report.md` + `.html`.
 
 ## Next
 
+-1. Release v0.5.0: PR this branch to main, tag, reinstall the runtime, confirm a fresh
+   session lists `ew-hill-climb`. Waiting on your go.
+-0. Remaining review recommendations, in order: R6 (code-owned climb score), R5 (final review
+   as a supervised ledger entry), R4 (gate the merged tree), R7 (independent AO reviewer),
+   R8 (`factory doctor`), R9 (docs).
 0. v0.4.0 (AO runner, PR #9) released 2026-10-31. New factories use `--runner ao`; the two
    live Orca factories (Aristocrat course-factory-mvp, Herculean iolaus-columns) finish on Orca.
 1. Tag and release v0.3.0 from main (c398dd6).
@@ -26,6 +32,11 @@ Merged to main via PR #6 (c398dd6) on 2026-10-29; not yet tagged. Build log:
 
 ## Decisions
 
+- 2026-11-10: Review fixes R2 and R3, released as v0.5.0. `factory report` waits at most 1 s
+  for the tick lock; when a tick holds it (through a merge gate, say) the report goes to
+  `reports/<ticket>.json` in the factory state dir and the next lock holder files it. Reconcile
+  leaves a working ticket alone while its report file waits. `daily_ticket_cap` now counts
+  every start of the UTC day across queued features (`carried_starts` in `state.json`).
 - 2026-11-04: New `ew-hill-climb` skill. The factory runs it once per feature after every
   ticket merges, when the feature has an approved `.scratch/<feature>/climb.md`. The climb is
   ledger entry `climb` on `factory/<feature>-climb`, gated and merged like a ticket, and the
@@ -201,6 +212,8 @@ Merged to main via PR #6 (c398dd6) on 2026-10-29; not yet tagged. Build log:
 
 ## Open items / waiting on
 
+- `factory gate` (run by workers) still takes the tick lock after its run to record times, so
+  it can wait behind a tick; with `build_slots 1` it already waits for the slot, so no change yet.
 - Unverified on real Orca: `terminal read` output shape (bypass check now fails
   closed if it can't read), and that `terminal show` reports `connected: false` only
   for dead workers.
