@@ -9,16 +9,16 @@ updated: 2026-11-10
 
 ## Now
 
-v0.5.0 is prepared on branch `claude/engineering-workflow-plugin-review-9bf650` (committed,
-not pushed, not tagged, not installed): it carries the unreleased plugin packaging, climb and
+v0.5.0 is in PR #12 against main (branch `claude/engineering-workflow-plugin-review-9bf650`;
+not merged, not tagged, not installed): it carries the unreleased plugin packaging, climb and
 queue work from main plus two fixes from the 2026-11-10 review. 155 tests and
 `verify --expected 0.5.0` pass. The installed runtime is still tag v0.4.0 (no climb, no queue).
 Review: `.scratch/factory-review/report.md` + `.html`.
 
 ## Next
 
--1. Release v0.5.0: PR this branch to main, tag, reinstall the runtime, confirm a fresh
-   session lists `ew-hill-climb`. Waiting on your go.
+-1. Release v0.5.0: merge PR #12, tag, reinstall the runtime, confirm a fresh session lists
+   `ew-hill-climb`. Waiting on your go.
 -0. Remaining review recommendations, in order: R6 (code-owned climb score), R5 (final review
    as a supervised ledger entry), R4 (gate the merged tree), R7 (independent AO reviewer),
    R8 (`factory doctor`), R9 (docs).
