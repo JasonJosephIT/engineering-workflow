@@ -29,10 +29,12 @@ Review: `.scratch/factory-review/report.md` + `.html`.
 4. First real factory run (Herculean Iolaus-columns, 2026-10-30) confirmed the `agent launch` reply shape (fixed in v0.3.1); `terminal read` and `terminal show` shapes still to confirm.
 5. Skill routing: spec written (`.scratch/skill-routing/spec.md`); next
    `/ew-matt-to-tickets` for it.
-6. npm: after v0.5.0 is tagged, `npm login` then `npm publish` from that tag.
+6. npm: `git checkout 028bdb6`, `npm login`, `npm publish` (ares-workflow 0.5.0; you run it).
 
 ## Decisions
 
+- 2026-11-10: Keep tag v0.5.0 at 4eeffbc (already pushed). Publish npm 0.5.0 from main 028bdb6,
+  which adds only the npm files, docs and a test; moving a pushed tag would break `doctor --check-upstream`.
 - 2026-11-10: Review fixes R2 and R3, released as v0.5.0. `factory report` waits at most 1 s
   for the tick lock; when a tick holds it (through a merge gate, say) the report goes to
   `reports/<ticket>.json` in the factory state dir and the next lock holder files it. Reconcile
