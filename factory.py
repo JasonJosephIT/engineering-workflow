@@ -326,7 +326,7 @@ def lock_within(handle, mode, seconds=1.0):
     while True:
         try: return fcntl.flock(handle, mode | fcntl.LOCK_NB)
         except BlockingIOError:
-            if time.monotonic() > deadline: raise TimeoutError("factory counters are locked")
+            if time.monotonic() > deadline: raise TimeoutError("factory lock is busy")
             time.sleep(0.05)
 
 
@@ -449,12 +449,44 @@ def card(state, ticket, entry, out):
     entry["card"] = [status, comment]
 
 
+def file_report(entry, result, reason, slowed_by):
+    entry["slowed_by"] = slowed_by
+    if result == "approved": move(entry, "approved")
+    else: move(entry, "needs-you", reason or "blocked")
+
+
+def report_file(directory, ticket): return Path(directory) / "reports" / f"{ticket}.json"
+
+
+def take_reports(directory, ledger):
+    """File the reports workers left while a tick held the lock. Workers can write these files:
+    one that is unreadable, or not for a working ticket, is dropped."""
+    paths = sorted((Path(directory) / "reports").glob("*.json"))
+    for path in paths:
+        try:
+            data, entry = read_regular(path), ledger.get(path.stem)
+            words = (data["result"], data.get("reason"), data.get("slowed_by"))
+            if (entry and entry["state"] == "working" and words[0] in ("approved", "blocked")
+                    and all(isinstance(w, (str, type(None))) for w in words)):
+                file_report(entry, *words)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            pass
+    if paths: save(Path(directory) / "ledger.json", ledger)  # before the files go, so a crash cannot lose one
+    for path in paths:
+        try: path.unlink(missing_ok=True)
+        except OSError: shutil.rmtree(path, ignore_errors=True)  # a directory planted there must not wedge the lock
+
+
 @contextmanager
-def tick_lock(directory):
+def tick_lock(directory, wait=None):
+    """Hold the factory's lock; `wait` seconds at most (TimeoutError), else for as long as it takes."""
     if not (directory / "state.json").is_file(): raise ValueError("No factory installed for this project")
     with open(directory / "tick.lock", "a") as handle:
-        fcntl.flock(handle, fcntl.LOCK_EX)
-        yield load(directory)  # (state, ledger), read under the lock
+        if wait is None: fcntl.flock(handle, fcntl.LOCK_EX)
+        else: lock_within(handle, fcntl.LOCK_EX, wait)
+        state, ledger = load(directory)  # read under the lock
+        take_reports(directory, ledger)
+        yield state, ledger
 
 
 # --- Gate -------------------------------------------------------------------------
@@ -714,13 +746,18 @@ def held(state, ledger):
     return sum(e["state"] in ("needs-you", "capped") for e in ledger.values()) >= state["stop_if_waiting"]
 
 
+def started_today(state, ledger):
+    """Tickets started today (UTC), with those of the features this factory finished earlier today."""
+    today = now()[:10]
+    return ((state.get("carried_starts") or {}).get(today, 0)
+            + sum(e["started_at"][:10] == today for e in ledger.values()))
+
+
 def free_room(state, ledger):
     """How many tickets may start now: concurrency minus working, within the UTC daily cap; none when held."""
     if held(state, ledger): return 0
-    today = now()[:10]
     working = sum(e["state"] == "working" for e in ledger.values())
-    started = sum(e["started_at"][:10] == today for e in ledger.values())
-    return min(state["concurrency"] - working, state["daily_ticket_cap"] - started)
+    return min(state["concurrency"] - working, state["daily_ticket_cap"] - started_today(state, ledger))
 
 
 def start_tickets(state, ledger, out):
@@ -749,7 +786,8 @@ def reconcile(state, ledger, out):
     """Tick step 1: a working ticket whose worker is gone without reporting is interrupted;
     without --allow-bypass, one Orca now shows in bypass (or cannot show) is stopped and the factory pauses."""
     for ticket, entry in ledger.items():
-        if entry["state"] != "working" or not entry["worker_handle"]:
+        if (entry["state"] != "working" or not entry["worker_handle"]
+                or report_file(state["state_dir"], ticket).is_file()):  # reported since this tick began: file it next tick
             continue
         try: alive = worker_alive(entry["worker_handle"])
         except (ValueError, OSError, subprocess.SubprocessError): continue  # check again next tick
@@ -856,6 +894,7 @@ def advance(state, ledger, out):
     if queue and tickets(state["integration_checkout"], queue[0]):
         done = state["feature"]
         save(Path(state["state_dir"]) / f"ledger-{done}-{datetime.now(timezone.utc):%Y%m%dT%H%M%S}.json", ledger)
+        state["carried_starts"] = {now()[:10]: started_today(state, ledger)}  # the daily cap outlives the ledger
         ledger.clear()  # tick saves the emptied ledger for the next feature
         state["done_features"] = [*state.get("done_features", []), done]
         state["past_reviews"] = [*state.get("past_reviews", []), state.pop("final_review_handle", None)]
@@ -1048,13 +1087,17 @@ def gate(args):
 def report(args):
     if args.result not in ("approved", "blocked"): raise ValueError("report needs <ticket> approved|blocked")
     directory = state_dir(args.project)
-    with tick_lock(directory) as (state, ledger):
-        entry = ledger.get(args.ticket)
-        if not entry or entry["state"] != "working": raise ValueError(f"Ticket {args.ticket} is not working")
-        entry["slowed_by"] = args.slowed_by
-        if args.result == "approved": move(entry, "approved")
-        else: move(entry, "needs-you", args.reason or "blocked")
-        save(directory / "ledger.json", ledger)
+    try:
+        with tick_lock(directory, wait=1.0) as (state, ledger):
+            entry = ledger.get(args.ticket)
+            if not entry or entry["state"] != "working": raise ValueError(f"Ticket {args.ticket} is not working")
+            file_report(entry, args.result, args.reason, args.slowed_by)
+            save(directory / "ledger.json", ledger)
+    except TimeoutError:  # a tick holds the lock, maybe through a long gate: leave the report for the next one
+        if (load(directory)[1].get(args.ticket) or {}).get("state") != "working":  # also keeps the name a ticket id
+            raise ValueError(f"Ticket {args.ticket} is not working") from None
+        save(report_file(directory, args.ticket),
+             {"result": args.result, "reason": args.reason, "slowed_by": args.slowed_by})
     spawn_tick(directory) if args.detach else tick(directory)
 
 
