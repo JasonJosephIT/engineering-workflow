@@ -4,8 +4,10 @@ Load the user/project CLAUDE.md bootstrap and shared WORKFLOW.md. Discover the
 ew- skills under .claude/skills. Use native Skill/Agent tools where available;
 fresh implementer prompts must not inherit the full controller history.
 Use Sonnet for mechanical tickets and ticket review; Opus for judgment/integration.
-Respect installed model availability. Resolve `<SDD_SKILL_DIR>` to the actual
-directory containing ew-subagent-driven-development/SKILL.md before running helpers.
+When the session model or a delegated agent is Fable 5.2, load ew-fable before
+briefing or steering it. Respect installed model availability. Resolve
+`<SDD_SKILL_DIR>` to the actual directory containing
+ew-subagent-driven-development/SKILL.md before running helpers.
 
 Hooks: SessionStart performs version/docs checks, optional Headroom startup and
 the optional always-on i-have-adhd ruleset;

@@ -2,7 +2,7 @@
 status: active
 progress: 100
 next_date: 2026-10-29
-updated: 2026-11-10
+updated: 2026-11-11
 ---
 
 # STATUS
@@ -13,14 +13,18 @@ v0.7.0 is released and installed (2026-11-10): PR #14 merged as `8ead201`, tagge
 runtime updated with `ew-workflow-update` (166 tests, `verify --expected 0.7.0` and the upstream
 tag check pass). Since the 2026-11-10 review it holds R2, R3 (v0.5.0), R6 (v0.6.0) and R5 (v0.7.0).
 Rollback: `~/.workflow-backups/20261111T020926104459Z`. Not published to npm.
-On `feature/gate-merged-tree` (VERSION 0.8.0, PR open against main): review recommendation R4,
-the gate runs on the merged tree. Not merged, tagged or installed.
+v0.8.0 (R4, the gate runs on the merged tree) is merged as `87847f1` (PR #15); the 2026-11-11
+session check reports the installed runtime as v0.8.0 at that commit, integrity verified.
+On `claude/fable-adapter-ew-skill-168c24` (VERSION 0.9.0): new `ew-fable` skill
+(`skills/fable/SKILL.md`), a Fable 5.2 adapter, plus a pointer to it in `adapters/claude.md`.
+Not pushed, merged, tagged or installed.
 Review: `.scratch/factory-review/report.md` + `.html`.
 
 ## Next
 
 -1. Existing `climb.md` files need a `**Harness:**` line (paths or `none`) before the next install.
--1. R4 is in a PR from `feature/gate-merged-tree`: merge, tag v0.8.0, reinstall. Waiting on your go.
+-1. `ew-fable` (0.9.0) is on `claude/fable-adapter-ew-skill-168c24`: read the skill, then PR,
+    merge, tag v0.9.0, reinstall. Waiting on your go.
 -0. Remaining review recommendations, in order: R7 (independent AO reviewer),
    R8 (`factory doctor`), R9 (docs).
 0. v0.4.0 (AO runner, PR #9) released 2026-10-31. New factories use `--runner ao`; the two
@@ -34,6 +38,16 @@ Review: `.scratch/factory-review/report.md` + `.html`.
 
 ## Decisions
 
+- 2026-11-11: `ew-fable`, a Fable 5.2 adapter skill (v0.9.0). Source: Matt Shumer's video
+  "You're Prompting Fable 5.2 Wrong" (2026-11-11), one practitioner's report, recorded in
+  SOURCES.md and labelled in the skill as unmeasured here. It covers the shape of the work (one
+  thread first, parallel agents share nothing), how to write a brief for a Fable agent (exact
+  words, a shown reference, done as a proof, "you own this"), steering (look early, remove
+  ceremony, find bottlenecks) and the gauntlet loop: ew-hill-climb with a blind judge for goals
+  a program can't score, restarted in a fresh context when it stalls. It does not change
+  core's model choice, review budgets or permissions, and the gauntlet loop is interactive
+  only (the factory climb still needs a command metric). The Claude adapter loads it when the
+  session model or a delegated agent is Fable 5.2; other adapters are unchanged.
 - 2026-11-10: R4, gate the merged tree (v0.8.0). Before a ticket (or the climb) merges, `tick`
   merges the integration tip into the ticket branch, in the ticket's own worktree, and gates
   that; the `--no-ff` merge into the integration branch then has the gated tree. A conflict is
