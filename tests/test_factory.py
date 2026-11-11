@@ -648,11 +648,27 @@ class FactoryTests(unittest.TestCase):
 
     # --- climb and queued features ---
 
-    def add_climb(self, status='ready-for-agent', radius='low'):
-        (self.project / '.scratch' / 'demo' / 'climb.md').write_text(
+    def add_climb(self, status='ready-for-agent', radius='low', feature='demo',
+                  metric='`cat score.txt` (ms, lower is better)', target='<= 50', harness='none'):
+        (self.project / '.scratch' / feature).mkdir(parents=True, exist_ok=True)
+        (self.project / '.scratch' / feature / 'climb.md').write_text(
             f'# Climb: faster build\n\n**Status:** {status}\n\n**Blast radius:** {radius}\n\n'
-            '**Metric:** `python3 bench.py` (ms, lower is better)\n\n**Target:** <= 50\n')
+            f'**Metric:** {metric}\n\n**Target:** {target}\n' + f'\n**Harness:** {harness}\n' * bool(harness))
+        (self.project / 'score.txt').write_text('80\n')
         self.git('add', '-A'); self.git('commit', '-qm', 'climb file')
+
+    def test_climb_file_without_a_metric_command_or_a_direction_is_refused_at_install_and_queue(self):
+        self.add_climb(metric='make it faster')
+        self.assertIn('climb.md needs **Metric:** `command`', self.cli('install', '--feature', 'demo', ok=False).stderr)
+        for target in ('50', '80 -> 50'):
+            self.add_climb(metric='`cat score.txt`', target=target)
+            self.assertIn('lower or higher is better', self.cli('install', '--feature', 'demo', ok=False).stderr)
+        self.add_climb(harness='')
+        self.assertIn('climb.md needs **Harness:**', self.cli('install', '--feature', 'demo', ok=False).stderr)
+        self.add_climb(metric='`cat score.txt`', target='>= 90'); self.cli('install', '--feature', 'demo')
+        self.add_feature('next'); self.add_climb(feature='next', metric='soon')
+        self.assertIn('climb.md needs **Metric:** `command`', self.cli('queue', 'next', ok=False).stderr)
+        self.add_climb(feature='next', status='needs-triage', metric='soon'); self.cli('queue', 'next')
 
     def add_feature(self, name):
         issues = self.project / '.scratch' / name / 'issues'; issues.mkdir(parents=True)
@@ -660,6 +676,54 @@ class FactoryTests(unittest.TestCase):
         self.git('add', '-A'); self.git('commit', '-qm', f'{name} tickets')
 
     def prompt(self, launch): return launch[launch.index('--prompt') + 1]
+
+    def finish_climb(self, score, **files):
+        """The climb worker's last steps: commit a round that leaves the metric at `score`, then report approved."""
+        tree = self.state_dir / 'worktrees' / 'demo-climb'
+        for name, text in {'faster.txt': 'x\n', 'score.txt': f'{score}\n', **files}.items(): (tree / name).write_text(text)
+        self.git('add', '-A', cwd=tree); self.git('commit', '-qm', f'round 1: 80 -> {score} ms', cwd=tree)
+        return self.cli('report', 'climb', 'approved', '--slowed-by', 'nothing', project=tree)
+
+    def test_factory_scores_the_climb_itself_and_holds_one_that_did_not_improve(self):
+        self.add_climb(metric='`tee last-run.txt < score.txt` (lower is better)')  # a metric that leaves a file behind
+        self.cli('install', '--feature', 'demo'); self.cli('tick'); self.build(); self.approve()
+        self.assertEqual(self.ledger()['climb']['baseline'], 80)
+        self.assertEqual(self.git('status', '--porcelain', cwd=self.state_dir / 'worktrees' / 'demo-climb'), '')
+        self.finish_climb(80)  # the worker says approved; the factory's own run shows no gain
+        entry = self.ledger()['climb']
+        self.assertEqual((entry['state'], entry['reason']),
+                         ('needs-you', 'climb did not improve its metric: 80 -> 80 (lower is better)'))
+        self.assertEqual(self.final_reviews(), [])
+        self.cli('approve', 'climb'); self.cli('tick')  # the person may still take it
+        self.assertEqual((self.ledger()['climb']['state'], len(self.final_reviews())), ('merged', 1))
+
+    def test_climb_baseline_forged_in_the_ledger_does_not_get_a_climb_merged(self):
+        self.add_climb(); self.cli('install', '--feature', 'demo'); self.cli('tick'); self.build(); self.approve()
+        ledger = self.ledger(); ledger['climb']['baseline'] = 1e9  # the worker can write the ledger
+        (self.state_dir / 'ledger.json').write_text(json.dumps(ledger))
+        self.finish_climb(80)
+        self.assertEqual(self.ledger()['climb']['reason'], 'climb did not improve its metric: 80 -> 80 (lower is better)')
+
+    def test_climb_whose_metric_prints_no_number_parks_before_a_worker_starts_and_requeue_retries_at_the_tip(self):
+        self.add_climb(metric='`cat bench.txt` (lower is better)')
+        self.cli('install', '--feature', 'demo'); self.cli('tick'); self.build(); self.approve()
+        entry = self.ledger()['climb']
+        self.assertEqual((entry['state'], entry['reason'], len(self.launches())),
+                         ('needs-you', 'climb metric gave no number on build/demo', 1))
+        (self.project / 'bench.txt').write_text('time: 70 ms\n')
+        self.git('add', '-A'); self.git('commit', '-qm', 'the benchmark')
+        self.cli('requeue', 'climb')
+        self.assertIn('relaunched climb in its worktree', self.cli('tick').stdout)
+        entry = self.ledger()['climb']
+        self.assertEqual((entry['state'], entry['baseline'], len(self.launches())), ('working', 70, 2))
+
+    def test_climb_that_edits_its_harness_is_held_even_when_the_score_improved(self):
+        (self.project / 'bench').mkdir(); (self.project / 'bench' / 'cases.txt').write_text('hard\n')
+        self.add_climb(harness='`bench/`, score-check.sh')
+        self.cli('install', '--feature', 'demo'); self.cli('tick'); self.build(); self.approve()
+        self.finish_climb(45, **{'bench/cases.txt': 'easy\n'})
+        entry = self.ledger()['climb']
+        self.assertEqual((entry['state'], entry['reason']), ('needs-you', 'climb changed its harness: bench/cases.txt'))
 
     def test_approved_climb_runs_after_every_ticket_merges_then_the_final_review(self):
         self.add_climb(); self.cli('install', '--feature', 'demo'); self.cli('tick')
@@ -672,10 +736,9 @@ class FactoryTests(unittest.TestCase):
         self.assertIn(f"report climb approved --detach --project '{climb_tree}'", brief)
         self.assertEqual(self.ledger()['climb']['state'], 'working')
         self.cli('precheck')
-        (climb_tree / 'faster.txt').write_text('x\n')
-        self.git('add', '-A', cwd=climb_tree); self.git('commit', '-qm', 'round 1: 80 -> 45 ms', cwd=climb_tree)
-        self.cli('report', 'climb', 'approved', '--slowed-by', 'nothing', project=climb_tree)
+        self.finish_climb(45)
         self.assertEqual(self.ledger()['climb']['state'], 'merged')
+        self.assertIn('climb merged factory/demo-climb metric 80 -> 45', self.cli('status').stdout)
         self.assertTrue((self.project / 'faster.txt').is_file())
         self.assertEqual((len(self.final_reviews()), self.state()['mode']), (1, 'paused'))
 
@@ -699,9 +762,7 @@ class FactoryTests(unittest.TestCase):
         self.add_climb(radius='high'); self.cli('install', '--feature', 'demo'); self.cli('tick')
         self.build(); self.approve()
         climb_tree = self.state_dir / 'worktrees' / 'demo-climb'
-        (climb_tree / 'faster.txt').write_text('x\n')
-        self.git('add', '-A', cwd=climb_tree); self.git('commit', '-qm', 'round 1', cwd=climb_tree)
-        self.cli('report', 'climb', 'approved', '--slowed-by', 'nothing', project=climb_tree)
+        self.finish_climb(45)
         self.assertEqual(self.ledger()['climb']['reason'], 'high blast radius: waiting for approval')
         self.cli('approve', 'climb'); self.cli('tick')
         self.assertEqual(len(self.final_reviews()), 1)
@@ -1727,6 +1788,20 @@ class AoRunnerTests(unittest.TestCase):
     def build_in(self, tree):
         (tree / 'thing.txt').write_text('built\n')
         self.git('add', '-A', cwd=tree); self.git('commit', '-qm', 'Build', cwd=tree)
+
+    def test_ao_climb_gets_its_brief_only_once_the_factory_has_a_baseline(self):
+        FactoryTests.add_climb(self, metric='`cat bench.txt` (lower is better)')
+        self.install_ao(); self.cli('tick'); self.build_in(self.ticket_tree())
+        self.cli('report', '01', 'approved', '--slowed-by', 'nothing', project=self.ticket_tree())
+        entry = self.ledger()['climb']
+        self.assertEqual((entry['state'], entry['reason'], self.sends(entry['worker_handle'][3:])),
+                         ('needs-you', 'climb metric gave no number on build/demo', []))
+        (self.project / 'bench.txt').write_text('70\n')
+        self.git('add', '-A'); self.git('commit', '-qm', 'the benchmark')
+        self.cli('requeue', 'climb'); self.cli('tick')
+        entry = self.ledger()['climb']
+        self.assertEqual((entry['state'], entry['baseline']), ('working', 70))
+        self.assertIn('(climb brief)', self.sends(entry['worker_handle'][3:])[-1])
 
     def test_ao_worktree_without_its_marker_is_still_a_ticket_worktree(self):
         self.install_ao(); self.cli('tick')

@@ -44,12 +44,13 @@ for a human answer; when stuck, report blocked with the reason.
 2. Climb on this worktree's branch only, following ew-hill-climb unattended. The gate
    command in the prompt is a guardrail on every kept round; run it only through that
    command.
-3. Commit each kept round with its score, and commit `hill-climb/log.md`. Leave the
-   worktree clean.
+3. Commit each kept round with its score, and commit `hill-climb/<feature>/log.md`
+   (the feature is the climb file's folder name). Leave the worktree clean.
 4. Dispatch ONE fresh reviewer subagent (inline pass under AO, as in the worker brief)
    with the climb file, the final diff and the log. Its job: changes that game the
    metric instead of improving what it measures, and harness edits after the baseline.
-   At most one fix round, then re-run the gate and commit.
+   At most one fix round, then re-run the gate and commit. The factory re-runs the
+   metric itself before merging, so an approved report without a real gain is held.
 5. Last step, always: the prompt's report command. approved when the target was reached,
    or the climb plateaued or spent its budget with a kept improvement, all guardrails
    green and the held-out set not clearly below training. Otherwise blocked with

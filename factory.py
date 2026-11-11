@@ -395,12 +395,38 @@ def tickets(checkout, feature):
     return found
 
 
+def approved_climb(checkout, feature):
+    """(path, header fields) of the feature's climb file when it is approved (ready-for-agent), else None."""
+    path = Path(checkout) / ".scratch" / feature / "climb.md"
+    fields = header_fields(path) if path.is_file() else {}
+    return (path, fields) if fields.get("Status") == "ready-for-agent" else None
+
+
+def climb_spec(fields):
+    """(metric command, lower is better, harness paths) from a climb file's header; ValueError says what it lacks."""
+    metric = re.match(r"`([^`]+)`(.*)", fields.get("Metric", ""))
+    if not metric: raise ValueError("climb.md needs **Metric:** `command` (lower|higher is better)")
+    if "Harness" not in fields:  # the worker may change anything else, so leaving it out must be a choice
+        raise ValueError("climb.md needs **Harness:** the paths that produce the score, or none")
+    harness = [p.strip(" `") for p in fields["Harness"].split(",") if p.strip(" `").lower() not in ("", "none")]
+    note, target = metric.group(2).lower(), fields.get("Target", "").strip()
+    for lower, higher in (("lower" in note, "higher" in note),  # the Metric line's note, else the Target's operator
+                          (target.startswith(("<", "≤")), target.startswith((">", "≥")))):
+        if lower != higher: return metric.group(1), lower, harness
+    raise ValueError("climb.md must say whether lower or higher is better, on its Metric or Target line")
+
+
+def check_climb(checkout, feature):
+    """Refuse (ValueError) an approved climb file the factory could not score."""
+    found = approved_climb(checkout, feature)
+    if found: climb_spec(found[1])
+
+
 def climb_ticket(state):
     """The feature's approved climb file as a ticket (read on the integration branch), or None."""
-    path = Path(state["integration_checkout"]) / ".scratch" / state["feature"] / "climb.md"
-    if not path.is_file(): return None
-    fields = header_fields(path)
-    if fields.get("Status") != "ready-for-agent": return None
+    found = approved_climb(state["integration_checkout"], state["feature"])
+    if not found: return None
+    path, fields = found
     return {"id": CLIMB, "path": path, "status": fields["Status"], "radius": radius_of(fields), "blocked_by": []}
 
 
@@ -491,24 +517,35 @@ def tick_lock(directory, wait=None):
 
 # --- Gate -------------------------------------------------------------------------
 
-def run_gate(cwd, script, minutes):
-    """Run `script` in cwd, in its own process group, killed and failed after `minutes`."""
-    if not script.is_file(): return False, f"GATES: FAIL missing {GATES}"
-    gate = subprocess.Popen(["bash", str(script)], cwd=cwd, text=True, stdout=subprocess.PIPE,
+def run_bash(args, cwd, minutes):
+    """Run bash in cwd, in its own process group; (stdout, stderr, exit code), killed after `minutes` (code None)."""
+    bash = subprocess.Popen(["bash", *args], cwd=cwd, text=True, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, start_new_session=True)
     try:
-        stdout, stderr = gate.communicate(timeout=minutes * 60)
+        return (*bash.communicate(timeout=minutes * 60), bash.returncode)
     except subprocess.TimeoutExpired:
-        os.killpg(gate.pid, signal.SIGKILL)
-        stdout, stderr = gate.communicate()
-        stdout += "GATES: FAIL timeout\n"
+        os.killpg(bash.pid, signal.SIGKILL)
+        return (*bash.communicate(), None)
+
+
+def run_gate(cwd, script, minutes):
+    """Run `script` in cwd, failed after `minutes`."""
+    if not script.is_file(): return False, f"GATES: FAIL missing {GATES}"
+    stdout, stderr, code = run_bash([str(script)], cwd, minutes)
+    if code is None: stdout += "GATES: FAIL timeout\n"
     lines = stdout.splitlines()
     return bool(lines) and lines[-1] == "GATES: PASS", stdout + stderr
 
 
-def queued_gate(directory, cwd, script=None):
+def run_metric(cwd, command, minutes):
+    """Run a climb's metric command; (it exited 0, its stdout)."""
+    stdout, _, code = run_bash(["-c", command], cwd, minutes)
+    return code == 0, stdout
+
+
+def queued_gate(directory, cwd, script=None, run=run_gate):
     """Run the gate (default: cwd's own script) inside one of build_slots slot locks;
-    return (passed, output, waited, ran) seconds."""
+    return (passed, output, waited, ran) seconds. `run=run_metric` runs a metric command in a slot instead."""
     state_file = Path(directory) / "state.json"
     state = read_json(state_file) if state_file.is_file() else {"build_slots": 1, "max_minutes": 90}
     slots, script = state["build_slots"], script or Path(cwd) / GATES
@@ -523,7 +560,7 @@ def queued_gate(directory, cwd, script=None):
                 handle.close(); continue
             with handle:
                 started = time.monotonic()
-                passed, output = run_gate(cwd, script, state["max_minutes"])
+                passed, output = run(cwd, script, state["max_minutes"])
                 return passed, output, started - begin, time.monotonic() - started
         time.sleep(0.1)  # ponytail: polling; a fair FIFO queue only if starvation shows up
 
@@ -545,6 +582,62 @@ def starter_gate(checkout):
 
 
 # --- Tick steps -------------------------------------------------------------------
+
+def measure(state, command, commit):
+    """The climb's score at `commit`: the metric command run in a build slot, in a throwaway checkout (the worker
+    can write its own tree and the ledger). The one number on the last line it prints; None when it fails,
+    times out or prints anything else.
+    ponytail: one run; repeat and take the median if a noisy metric holds good climbs (a hold costs one approve)."""
+    checkout, tree = state["integration_checkout"], Path(state["state_dir"]) / "measure"
+    try:
+        git("worktree", "remove", "--force", str(tree), cwd=checkout, timeout=300)  # left by a tick that died
+        if git("worktree", "add", "--detach", str(tree), commit, cwd=checkout, timeout=300) is None: return None
+        ran, stdout, *_ = queued_gate(state["state_dir"], tree, command, run_metric)
+        git("worktree", "remove", "--force", str(tree), cwd=checkout, timeout=300)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    lines = stdout.strip().splitlines()
+    numbers = re.findall(r"-?\d+(?:\.\d+)?", lines[-1]) if ran and lines else []
+    return float(numbers[0]) if len(numbers) == 1 else None
+
+
+def current_climb(state):
+    """climb_spec of the approved climb file on the integration branch; ValueError when it cannot score a climb."""
+    found = approved_climb(state["integration_checkout"], state["feature"])
+    return climb_spec(found[1] if found else {})
+
+
+def climb_baseline(state, entry):
+    """Before a climb's worker starts: check the factory can score it at the integration tip. A needs-you reason
+    when the climb file or its command cannot; a requeue then tries again at the new tip."""
+    if "baseline" in entry: return None  # checked when this climb first started
+    try:
+        command = current_climb(state)[0]
+        # A climb requeued after a fix on the integration branch starts from that fix; a no-op otherwise.
+        git("merge", "--ff-only", state["integration_branch"], cwd=entry["worktree"], timeout=300)
+    except (ValueError, subprocess.TimeoutExpired) as error:
+        return str(error)
+    score = measure(state, command, state["integration_branch"])
+    if score is None: return f"climb metric gave no number on {state['integration_branch']}"
+    entry["baseline"] = score  # for `status`; climb_hold measures again and never reads it
+    return None
+
+
+def climb_hold(state, entry):
+    """A needs-you reason when the climb touched its harness, or the factory's own runs of the metric (where
+    the climb branched off, then at its tip) show no gain; never the worker's word or the ledger's."""
+    checkout, shown = state["integration_checkout"], lambda score: "no number" if score is None else f"{score:g}"
+    try: command, lower, harness = current_climb(state)
+    except ValueError as error: return str(error)
+    base = git("merge-base", state["integration_branch"], entry["branch"], cwd=checkout)
+    changed = git("diff", "--name-only", "--no-renames", base, entry["branch"], "--", *harness, cwd=checkout) if base and harness else ""
+    if not base or changed is None: return "could not compare the climb with the integration branch"
+    if changed: return f"climb changed its harness: {', '.join(changed.splitlines()[:3])}"
+    entry["baseline"], entry["final"] = before, after = measure(state, command, base), measure(state, command, entry["branch"])
+    if None not in (before, after) and (after < before if lower else after > before): return None
+    return (f"climb did not improve its metric: {shown(before)} -> {shown(after)} "
+            f"({'lower' if lower else 'higher'} is better)")
+
 
 def gate_ticket(state, entry):
     """Return a needs-you reason, or None when the ticket branch is clean and passes its gate."""
@@ -602,9 +695,9 @@ def valid(state, ticket, entry):
 
 
 def land(state, ticket, entry, out, hold=None):
-    """Gate, then merge; a failure or a hold reason leaves the ticket in needs-you. Returns True when merged."""
+    """Gate, then merge; a failure or a reason from `hold()` leaves the ticket in needs-you. Returns True when merged."""
     reason = ((None if valid(state, ticket, entry) else "ledger entry failed validation")
-              or gate_ticket(state, entry) or hold or merge_ticket(state, entry))
+              or gate_ticket(state, entry) or (hold and hold()) or merge_ticket(state, entry))
     if reason:
         move(entry, "needs-you", reason)
         out.append(f"{ticket} needs you: {reason}")
@@ -630,8 +723,9 @@ def merge_approved(state, ledger, out):
             found = (climb_ticket(state) if ticket == CLIMB
                      else next((t for t in tickets(integration_checkout(state), state["feature"]) if t["id"] == ticket), None))
             radius = found["radius"] if found else "high"
-            hold = control_files(state, entry) or ("high blast radius: waiting for approval" if radius == "high" else None)
-            land(state, ticket, entry, out, hold)
+            land(state, ticket, entry, out, lambda: (  # run once the entry is validated and its gate has passed
+                control_files(state, entry) or (climb_hold(state, entry) if ticket == CLIMB else None)
+                or ("high blast radius: waiting for approval" if radius == "high" else None)))
 
 
 def worker_brief(state, ticket, worktree):
@@ -695,11 +789,15 @@ def refuse(state, ticket, entry, reason, out):
 def launch(state, entry, ticket, out, started=None):
     """Launch the worker; park the ticket on launch failure or an unallowed bypass launch."""
     try:
-        if state.get("runner") == "ao":
-            ao_attach(state, entry, ticket["id"])
-            ao_send(entry["worker_handle"], worker_brief(state, ticket, entry["worktree"]))
-        else:
-            entry["worker_handle"] = launch_worker(entry["worktree"], worker_brief(state, ticket, entry["worktree"]))
+        ao_runner = state.get("runner") == "ao"
+        if ao_runner: ao_attach(state, entry, ticket["id"])  # AO makes the worktree; its session waits for the brief
+        reason = climb_baseline(state, entry) if ticket["id"] == CLIMB else None
+        if reason:
+            move(entry, "needs-you", reason)
+            out.append(f"{ticket['id']} needs you: {reason}")
+            return
+        if ao_runner: ao_send(entry["worker_handle"], worker_brief(state, ticket, entry["worktree"]))
+        else: entry["worker_handle"] = launch_worker(entry["worktree"], worker_brief(state, ticket, entry["worktree"]))
     except ValueError as error:
         move(entry, "needs-you", f"worker launch failed: {error}")
         out.append(f"{ticket['id']} needs you: worker launch failed")
@@ -981,6 +1079,7 @@ def install(args):
         raise ValueError(f"Integration branch {branch!r} does not exist")
     if branch in PROTECTED: raise ValueError(f"The integration branch cannot be {branch}")
     if not tickets(checkout, args.feature): raise ValueError(f"No ticket files in .scratch/{args.feature}/issues/")
+    check_climb(checkout, args.feature)
     if not (checkout / GATES).is_file():
         raise ValueError(f"No gate script at {GATES}. Save and commit this starter, then install again:\n"
                          f"{starter_gate(checkout)}")
@@ -1046,7 +1145,9 @@ def status(args):
     state, ledger = load(directory)
     print(status_line(state, ledger))
     for ticket, entry in sorted(ledger.items()):
-        print(" ".join(filter(None, [ticket, entry["state"], entry["branch"], entry["reason"]])))
+        score = (f"metric {entry['baseline']:g} -> {entry['final']:g}"
+                 if type(entry.get("baseline")) is float and type(entry.get("final")) is float else None)
+        print(" ".join(filter(None, [ticket, entry["state"], entry["branch"], entry["reason"], score])))
     for path in sorted(directory.glob("final-review*.md")): print(f"final review: {path}")
     if state.get("next_features"): print(f"next: {', '.join(state['next_features'])}")
     for line in wave_summary(state, ledger): print(line)
@@ -1157,6 +1258,7 @@ def queue(args):
                 raise ValueError(f"{name} is already in this factory")
             if not tickets(state["integration_checkout"], name):
                 raise ValueError(f"No ticket files in .scratch/{name}/issues/ on {state['integration_branch']}")
+            check_climb(state["integration_checkout"], name)
             state["next_features"] = queued = [*queued, name]
             save(directory / "state.json", state)
     print(f"next: {', '.join(queued) or 'nothing queued'}")

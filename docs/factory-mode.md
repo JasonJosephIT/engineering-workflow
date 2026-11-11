@@ -211,11 +211,22 @@ A feature can carry one approved goal that the factory climbs once its tickets a
 
 **Status:** ready-for-agent
 **Blast radius:** low | medium | high
-**Metric:** `<command that prints one number>` (direction)
+**Metric:** `<command that prints one number>` (lower is better | higher is better)
 **Target:** <= 50 ms
+**Harness:** bench/, eval/cases.json
 **Guardrails:** gates.sh, plus any no-regression checks
 **Budget:** 15 rounds
 ```
+
+- The factory scores the climb, not the worker (v0.6.0). `install` and `queue` refuse a
+  climb file without a backticked metric command, a direction and a `Harness` line
+  (paths, or `none`). `tick` runs the command in a build slot, in a throwaway checkout
+  of committed code (the worker can write its own tree and the ledger): at the
+  integration tip before the worker starts, then after the climb's gate passes, at the
+  commit where the climb branched off and at its tip. No gain, or a change to a
+  `Harness` path, parks the climb as needs-you; `approve` overrides. A metric that
+  gives no number parks the climb before any worker starts; `requeue` fast-forwards
+  the untouched climb branch to the integration tip and tries again.
 
 - Once every ticket is merged and nothing is startable, `tick` claims
   `factory/<feature>-climb` and launches one worker with the ew-factory climb brief,
