@@ -62,21 +62,25 @@ The worker brief's rules apply to the climb too. Never edit the climb file.
 ## Final review brief
 
 <steps>
-1. Review the integration branch named in the prompt, up to the commit the prompt names,
-   against its merge base with the repo's default branch (main or master). The factory
-   may already be merging the next feature on top; that work is not yours to review.
+1. Review the integration branch named in the prompt, up to the commit the prompt names
+   (your worktree is checked out at it), against its merge base with the repo's default
+   branch (main or master).
 2. If multi-model-review is installed, use it. Otherwise run ew-matt-code-review,
    then ew-ponytail-review.
 3. Add a security review when the diff touches auth, secrets, payments or trust
    boundaries (native security review if present, otherwise an explicit
    security-focused pass).
 4. Write all findings to the final-review file named in the prompt.
-5. Flag that the review is ready. Under AO (`AO_SESSION_ID` is set):
-   `ao report --needs-input --note "NEEDS YOU: final review ready: <final-review file>"`.
-   Under Orca: `orca worktree set --worktree path:<this checkout's absolute path> --workspace-status in-review --comment "NEEDS YOU: final review ready" --unread --json`.
+5. Last step, always: the prompt's report command. approved when nothing you found needs
+   the person. blocked with `--reason "<count> findings: <the worst one>"` when something
+   does, or when you could not finish the review. The factory tells the person; do not
+   flag it yourself.
 </steps>
 
 <rules>
-- Review only: do not fix, merge, push or open PRs.
+- Review only: do not fix, commit, merge, push or open PRs. Your branch is thrown away.
+- Run heavy builds and full suites only through the gate command in the prompt.
 - Never run ew-finishing-a-development-branch; the person decides how to integrate.
+- The factory supervises you like a worker: it caps your turns and minutes, and nothing
+  queued starts until you report.
 </rules>

@@ -234,13 +234,19 @@ A feature can carry one approved goal that the factory climbs once its tickets a
   caps, control-file hold, blast-radius hold, `approve` and `requeue` as a ticket. A
   climb file without `Status: ready-for-agent` is ignored.
 - The final review waits until the climb merges, so it reviews the climbed code.
+- The final review is ledger entry `review` (v0.7.0): its own claim branch
+  `factory/<feature>-review` and worktree at the integration tip, on both runners, so
+  reconcile, the turn and time caps, Guard and `requeue` cover it like a ticket. `land`
+  skips the gate and the merge for it, removes the worktree and deletes the branch.
+  `report review approved` finishes it; `blocked` parks it, and `approve review`
+  (the person accepts the findings) or `requeue review` (re-review at the new tip)
+  moves it on. The factory stays `running` until the review is in, then pauses.
 - `factory queue <feature>` (person only) lines up a feature whose tickets are
-  approved. When the final review is dispatched, `tick` archives the ledger as
+  approved. Once the review is in, `tick` archives the ledger as
   `ledger-<feature>-<time>.json`, switches to the queued feature on the same
   integration branch and starts its ready tickets in that same tick. Without a queued
-  feature, it pauses as before.
-- The review brief names the integration tip it covers, because the next feature's
-  merges land on top while it runs. Queued features write `final-review-<feature>.md`.
+  feature, it pauses. A feature queued after the pause starts on the next `resume`.
+- Queued features write `final-review-<feature>.md`.
 - A queued feature pings the person on every ticket it merges (`BUILT: <feature> NN
   merged`), plus one line when the factory moves on. On Orca the ping sets the
   integration checkout's card with an unread dot; on AO it goes through the relay.

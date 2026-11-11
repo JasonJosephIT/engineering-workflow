@@ -1,7 +1,7 @@
 {
   "name": "engineering-workflow",
   "description": "Jason's engineering workflow: the ew- skills (factory, autopilot, subagent-driven development, implementation review, ponytail, docs health and more), vendored Matt Pocock and i-have-adhd skills, and the Guard / credential-scan / goal-continuation hooks.",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "author": { "name": "Jason", "email": "joseph.jasonjj@gmail.com" },
   "license": "MIT",
   "skills": [

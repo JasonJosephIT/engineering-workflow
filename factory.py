@@ -31,6 +31,7 @@ FRESH_COUNTERS = {"turns": 0, "permission_needed": False}
 SETTINGS = ("concurrency", "build_slots", "daily_ticket_cap", "stop_if_waiting", "max_turns", "max_minutes")
 PERSON_ONLY = ("install", "uninstall", "set", "pause", "resume", "cycle", "approve", "requeue", "queue")
 CLIMB = "climb"  # the ledger id of the feature's hill-climb, run after every ticket merged
+REVIEW = "review"  # the ledger id of the feature's final review, run last; it merges nothing
 WORKTREES = (STATE, "factory", "worktrees")
 CONTROL_DIRS = {".engineering-workflow", ".claude", ".codex", ".agents", ".gemini"}
 CONTROL_FILES = {"CLAUDE.md", "AGENTS.md", "GEMINI.md", ".gitignore", ".gitattributes", ".gitmodules"}
@@ -309,7 +310,7 @@ def ao_ticket_branch(path):
     try: state = read_regular(Path(lines[1]).parent / STATE / "factory" / "state.json")
     except (OSError, ValueError): return False
     return (state.get("runner") == "ao" and isinstance(state.get("feature"), str)
-            and re.fullmatch(re.escape(f"factory/{state['feature']}-") + r"(?:[0-9]+|climb)", lines[2]) is not None)
+            and re.fullmatch(re.escape(f"factory/{state['feature']}-") + r"(?:[0-9]+|climb|review)", lines[2]) is not None)
 
 
 def read_regular(path):
@@ -476,7 +477,7 @@ def card(state, ticket, entry, out):
 
 
 def file_report(entry, result, reason, slowed_by):
-    entry["slowed_by"] = slowed_by
+    entry["slowed_by"], entry["reported"] = slowed_by, result
     if result == "approved": move(entry, "approved")
     else: move(entry, "needs-you", reason or "blocked")
 
@@ -691,13 +692,14 @@ def valid(state, ticket, entry):
         actual = branch_worktree(state["integration_checkout"], entry["branch"])
         return (actual is not None and Path(actual).resolve() == worktree
                 and worktree != Path(state["integration_checkout"]).resolve())
-    return worktree.parent == (Path(state["state_dir"]) / "worktrees").resolve()
+    return worktree == Path(new_entry(state, ticket, "", "")["worktree"]).resolve()
 
 
 def land(state, ticket, entry, out, hold=None):
     """Gate, then merge; a failure or a reason from `hold()` leaves the ticket in needs-you. Returns True when merged."""
+    review = ticket == REVIEW  # nothing to gate or merge: its findings are a file in the state dir
     reason = ((None if valid(state, ticket, entry) else "ledger entry failed validation")
-              or gate_ticket(state, entry) or (hold and hold()) or merge_ticket(state, entry))
+              or (None if review else gate_ticket(state, entry) or (hold and hold()) or merge_ticket(state, entry)))
     if reason:
         move(entry, "needs-you", reason)
         out.append(f"{ticket} needs you: {reason}")
@@ -708,17 +710,20 @@ def land(state, ticket, entry, out, hold=None):
         out.append(f"worker {entry['worker_handle']} did not stop; {close_hint(entry['worker_handle'])}")
     try: git("worktree", "remove", "--force", entry["worktree"], cwd=state["integration_checkout"], timeout=300)
     except subprocess.TimeoutExpired: out.append(f"worktree for {ticket} not removed: git timed out")
-    if state.get("runner") == "ao":  # merged work lives on the integration branch; drop the local claim branch
-        git("branch", "-d", entry["branch"], cwd=state["integration_checkout"])
-    out.append(f"merged {ticket} into {state['integration_branch']}")
-    if state.get("ping_merges"):  # a queued feature: the person asked to hear about each ticket it builds
+    if state.get("runner") == "ao" or review:  # merged work lives on the integration branch; drop the local claim branch
+        git("branch", "-D" if review else "-d", entry["branch"], cwd=state["integration_checkout"])
+    out.append(f"final review done: {review_file(state)}" if review else f"merged {ticket} into {state['integration_branch']}")
+    if state.get("ping_merges") and not review:  # a queued feature: the person asked to hear about each ticket it builds
         ping(state, f"BUILT: {state['feature']} {ticket} merged into {state['integration_branch']}", out)
     return True
 
 
 def merge_approved(state, ledger, out):
     for ticket, entry in ledger.items():
-        if entry["state"] == "approved":
+        if entry["state"] == "approved" and ticket == REVIEW:  # the reviewer found nothing that needs the person
+            if land(state, ticket, entry, out):
+                ping(state, f"BUILT: final review of {state['feature']} is in, nothing needs you: {review_file(state)}", out)
+        elif entry["state"] == "approved":
             # ticket files are only trustworthy on the integration branch
             found = (climb_ticket(state) if ticket == CLIMB
                      else next((t for t in tickets(integration_checkout(state), state["feature"]) if t["id"] == ticket), None))
@@ -735,6 +740,22 @@ def worker_brief(state, ticket, worktree):
             f"Gate: {workflow_command('gate', '--ticket', ticket['id'], '--project', worktree)}. "
             f"Report: {workflow_command('report', ticket['id'], 'approved', '--detach', '--project', worktree)}"
             f' --slowed-by "<one line>" (blocked instead of approved, plus --reason "<one line>", if stuck).')
+
+
+def review_brief(state, entry):
+    """The reviewer's prompt, pinned to the commit its worktree is at: the next feature may merge on top meanwhile."""
+    worktree = entry["worktree"]
+    try:  # a requeued review sees the fixes; its branch is throwaway, so whatever the last reviewer left goes
+        tip = (git("reset", "--hard", state["integration_branch"], cwd=worktree, timeout=300) is not None
+               and git("rev-parse", "HEAD", cwd=worktree))
+    except subprocess.TimeoutExpired: tip = None
+    if not tip: raise ValueError(f"could not bring the review worktree to {state['integration_branch']}")
+    return (f"Use the ew-factory skill (final review brief) for {state['feature']} on {state['integration_branch']} "
+            f"up to commit {tip}; write findings to {review_file(state)}. "
+            f"Gate: {workflow_command('gate', '--ticket', REVIEW, '--project', worktree)}. "
+            f"Report: {workflow_command('report', REVIEW, 'approved', '--detach', '--project', worktree)}"
+            f' --slowed-by "<one line>" (blocked instead of approved, plus --reason "<one line>", '
+            "when a finding needs the person).")
 
 
 def branch_name(state, ticket): return f"factory/{state['feature']}-{ticket}"
@@ -796,8 +817,9 @@ def launch(state, entry, ticket, out, started=None):
             move(entry, "needs-you", reason)
             out.append(f"{ticket['id']} needs you: {reason}")
             return
-        if ao_runner: ao_send(entry["worker_handle"], worker_brief(state, ticket, entry["worktree"]))
-        else: entry["worker_handle"] = launch_worker(entry["worktree"], worker_brief(state, ticket, entry["worktree"]))
+        brief = review_brief(state, entry) if ticket["id"] == REVIEW else worker_brief(state, ticket, entry["worktree"])
+        if ao_runner: ao_send(entry["worker_handle"], brief)
+        else: entry["worker_handle"] = launch_worker(entry["worktree"], brief)
     except ValueError as error:
         move(entry, "needs-you", f"worker launch failed: {error}")
         out.append(f"{ticket['id']} needs you: worker launch failed")
@@ -826,7 +848,7 @@ def relaunch(state, entry, ticket, out):
         move(entry, "needs-you", "worktree missing")
         out.append(f"{ticket['id']} needs you: worktree missing")
         return False
-    entry.update(started_at=now(), turns=0, queue_wait_seconds=0)  # caps count this run only
+    entry.update(started_at=now(), turns=0, queue_wait_seconds=0, reported=None)  # caps count this run only
     move(entry, "working")
     launch(state, entry, ticket, out, started=f"relaunched {ticket['id']} in its worktree")
     return True
@@ -848,7 +870,7 @@ def started_today(state, ledger):
     """Tickets started today (UTC), with those of the features this factory finished earlier today."""
     today = now()[:10]
     return ((state.get("carried_starts") or {}).get(today, 0)
-            + sum(e["started_at"][:10] == today for e in ledger.values()))
+            + sum(e["started_at"][:10] == today for t, e in ledger.items() if t != REVIEW))
 
 
 def free_room(state, ledger):
@@ -944,8 +966,8 @@ def wave_settled(state, ledger, ticket):
 
 
 def built(state, ledger):
-    """Every started ticket (not the climb) merged, and nothing startable."""
-    started = [e for t, e in ledger.items() if t != CLIMB]
+    """Every started ticket (not the climb or the review) merged, and nothing startable."""
+    started = [e for t, e in ledger.items() if t not in (CLIMB, REVIEW)]
     return (state["mode"] == "running" and state["final_review"] == "not-started" and bool(started)
             and all(e["state"] == "merged" for e in started) and not startable(state, ledger))
 
@@ -956,28 +978,41 @@ def climb_due(state, ledger):
             and climb_ticket(state) is not None)
 
 
+def start_extra(state, ledger, ticket, out, started):
+    """Start the climb or the final review like a ticket: its own claim branch, worktree, caps and report."""
+    key = ticket["id"]
+    if key in ledger:  # requeued
+        relaunch(state, ledger[key], ticket, out)
+        return
+    if git("rev-parse", "--verify", "--quiet", f"refs/heads/{branch_name(state, key)}",
+           cwd=state["integration_checkout"]) is not None:
+        ledger[key] = {**new_entry(state, key, "needs-you", ""), "reason": LEFTOVER, "leftover": True}
+        out.append(f"{key} needs you: {LEFTOVER}")
+        return
+    entry = claim(state, ledger, ticket)
+    if entry is None: out.append(f"{key} already claimed")
+    else: launch(state, entry, ticket, out, started=started.format(branch=entry["branch"]))
+
+
 def start_climb(state, ledger, out):
     """One climb worker on factory/<feature>-climb, like a ticket: its own worktree, gate, report and caps."""
     if not climb_due(state, ledger) or free_room(state, ledger) <= 0: return
-    ticket = climb_ticket(state)
-    if CLIMB in ledger:  # requeued
-        relaunch(state, ledger[CLIMB], ticket, out)
-        return
-    if git("rev-parse", "--verify", "--quiet", f"refs/heads/{branch_name(state, CLIMB)}",
-           cwd=state["integration_checkout"]) is not None:
-        ledger[CLIMB] = {**new_entry(state, CLIMB, "needs-you", ""), "reason": LEFTOVER, "leftover": True}
-        out.append(f"{CLIMB} needs you: {LEFTOVER}")
-        return
-    entry = claim(state, ledger, ticket)
-    if entry is None: out.append(f"{CLIMB} already claimed")
-    else: launch(state, entry, ticket, out, started=f"climbing {state['feature']} on {entry['branch']}")
+    start_extra(state, ledger, climb_ticket(state), out, f"climbing {state['feature']} on {{branch}}")
 
 
 def review_due(state, ledger):
-    """The whole feature is done: every started ticket merged (none waiting on the person), nothing startable,
-    and its approved climb, if any, merged too."""
+    """The final review should start: the whole feature is done and unreviewed (every started ticket merged,
+    none waiting on the person, nothing startable, its approved climb merged too), or its review was requeued."""
+    if REVIEW in ledger: return state["mode"] == "running" and ledger[REVIEW]["state"] == "ready"
     climb = ledger.get(CLIMB)
     return (built(state, ledger) and (climb["state"] == "merged" if climb else climb_ticket(state) is None))
+
+
+def reviewed(state, ledger):
+    """The feature's review is in, clean or accepted by the person: time to move on. A factory an older
+    version left at "dispatched" has no review entry: its unsupervised review counts as in."""
+    if REVIEW in ledger: return state["mode"] == "running" and ledger[REVIEW]["state"] == "merged"
+    return state["mode"] == "running" and state["final_review"] == "dispatched"
 
 
 def review_file(state):
@@ -987,7 +1022,7 @@ def review_file(state):
 
 
 def advance(state, ledger, out):
-    """The feature is done and its review dispatched: start the next queued feature, else pause."""
+    """The feature is done and its review is in: start the next queued feature, else pause."""
     queue = state.get("next_features") or []
     if queue and tickets(state["integration_checkout"], queue[0]):
         done = state["feature"]
@@ -995,11 +1030,10 @@ def advance(state, ledger, out):
         state["carried_starts"] = {now()[:10]: started_today(state, ledger)}  # the daily cap outlives the ledger
         ledger.clear()  # tick saves the emptied ledger for the next feature
         state["done_features"] = [*state.get("done_features", []), done]
-        state["past_reviews"] = [*state.get("past_reviews", []), state.pop("final_review_handle", None)]
         state.update(feature=queue[0], next_features=queue[1:], final_review="not-started", wave=[],
                      ping_merges=True)
         out.append(f"{done} done; now building {queue[0]}")
-        ping(state, f"BUILT: feature {done} built, climbed and sent to final review; now building {queue[0]}", out)
+        ping(state, f"BUILT: feature {done} built, climbed and reviewed; now building {queue[0]}", out)
         return True
     if queue: out.append(f"next feature {queue[0]} has no ticket files; it stays queued")
     state["mode"], state["wave_ended_at"] = "paused", now()
@@ -1008,32 +1042,13 @@ def advance(state, ledger, out):
 
 
 def final_review(state, ledger, out):
-    """One review agent at the integration tip once the feature is done, then the next queued feature or pause."""
-    if not review_due(state, ledger): return False
-    tip = git("rev-parse", state["integration_branch"], cwd=state["integration_checkout"])
-    brief = (f"Use the ew-factory skill (final review brief) for {state['feature']} on "
-             f"{state['integration_branch']} up to commit {tip}; write findings to {review_file(state)}.")
-    try:
-        if state.get("runner") == "ao":  # AO needs a branch of its own: one at the integration tip
-            branch = f"factory/{state['feature']}-final-review"
-            git("branch", "-f", branch, state["integration_branch"], cwd=state["integration_checkout"])
-            handle = ao_spawn(state, f"factory {state['feature']} final review", branch, brief)
-        else:
-            handle = launch_worker(state["integration_checkout"], brief)
-    except ValueError as error:  # no retry every hour: the person resumes once Orca is fixed
-        out.append(f"final review launch failed: {error}")
-    else:
-        reason = None if state["allow_bypass"] else bypass_problem(handle)
-        if reason:  # stays not-started: resume launches it again
-            if not stop({"worker_handle": handle}): out.append(f"worker {handle} did not stop; {close_hint(handle)}")
-            out.append(f"final review not started: {reason}")
-        else:
-            state["final_review_handle"], state["final_review"] = handle, "dispatched"
-            out.append("final review dispatched")
-            return advance(state, ledger, out)
-    state["mode"], state["wave_ended_at"] = "paused", now()
-    out.append("factory paused")
-    return False
+    """One review agent in a worktree of its own at the integration tip, supervised like a ticket worker:
+    alive or interrupted, capped, and done only when it reports. Nothing queued starts before that."""
+    if not review_due(state, ledger): return
+    ticket = {"id": REVIEW, "path": None, "status": "ready-for-agent", "radius": "low", "blocked_by": []}
+    try: start_extra(state, ledger, ticket, out, f"reviewing {state['feature']} on {{branch}}")
+    finally:  # even when the claim was persisted and its worktree then failed
+        if REVIEW in ledger: state["final_review"] = "dispatched"
 
 
 def update_mode(state, ledger, out):
@@ -1055,7 +1070,8 @@ def tick(directory):
             merge_approved(state, ledger, out)
             start_tickets(state, ledger, out)
             start_climb(state, ledger, out)
-            if final_review(state, ledger, out): start_tickets(state, ledger, out)  # the next feature, now
+            final_review(state, ledger, out)
+            if reviewed(state, ledger) and advance(state, ledger, out): start_tickets(state, ledger, out)  # the next feature, now
             update_mode(state, ledger, out)
             state["last_tick"] = now()
         finally:  # keep merges and claims made before any failure
@@ -1159,7 +1175,7 @@ def status(args):
 
 def wave_summary(state, ledger):
     """The last wave (the cycle's tickets, else every ticket): merges, what waits, queue wait, slowed-by lines."""
-    wave = {t: ledger[t] for t in state["wave"] or ledger if t in ledger}
+    wave = {t: ledger[t] for t in state["wave"] or ledger if t in ledger and t != REVIEW}
     if not wave: return []
     lines = [f"last wave: {sum(e['state'] == 'merged' for e in wave.values())} merged"]
     for name, label in (("needs-you", "needs you"), ("capped", "capped")):
@@ -1216,7 +1232,10 @@ def approve(args):
         entry = ledger.get(args.ticket)
         if not entry or entry["state"] != "needs-you":
             raise ValueError(f"Ticket {args.ticket} is not waiting for you")
-        if next((s["state"] for s in reversed(entry["history"]) if s["state"] != "needs-you"), None) != "approved":
+        if args.ticket == REVIEW:  # the reviewer's findings are the person's to accept, once it has reported them
+            if entry.get("reported") != "blocked":
+                raise ValueError("The review reported no findings to accept; requeue it instead")
+        elif next((s["state"] for s in reversed(entry["history"]) if s["state"] != "needs-you"), None) != "approved":
             raise ValueError(f"Ticket {args.ticket} was not approved by its worker; requeue it instead")
         out = []
         try:
@@ -1243,7 +1262,7 @@ def precheck(args):
     state, ledger = load(state_dir(args.project))
     if any(e["state"] == "working" for e in ledger.values()): return 0  # supervise them in any mode
     work = (in_flight(ledger) or (free_room(state, ledger) > 0 and startable(state, ledger))
-            or climb_due(state, ledger) or review_due(state, ledger))
+            or climb_due(state, ledger) or review_due(state, ledger) or reviewed(state, ledger))
     return 0 if state["mode"] != "paused" and work else 1
 
 
