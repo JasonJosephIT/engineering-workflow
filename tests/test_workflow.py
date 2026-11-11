@@ -41,7 +41,7 @@ class WorkflowTests(unittest.TestCase):
         return self.cli("install", "--project", str(self.project), "--platform", "all", *args)
 
     def test_package_integrity_and_version(self):
-        self.assertEqual(workflow.verify()["version"], "0.8.0")
+        self.assertEqual(workflow.verify()["version"], "0.9.0")
         with self.assertRaises(ValueError):
             workflow.verify(expected="99.0.0")
 
@@ -89,7 +89,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(parsed["env"], {"CUSTOM": "preserve"})
         self.assertEqual(parsed["permissions"], {"deny": ["Bash(sudo *)"]})
         self.assertTrue(list((self.project / ".workflow-backups").glob("*/AGENTS.md")))
-        self.assertEqual(len(list((self.project / ".agents/skills").iterdir())), 44)
+        self.assertEqual(len(list((self.project / ".agents/skills").iterdir())), 45)
 
     def test_idempotent_install_no_duplicate_hooks_or_blocks(self):
         self.install()

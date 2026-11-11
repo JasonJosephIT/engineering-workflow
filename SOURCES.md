@@ -14,6 +14,7 @@ history, or private project content is included.
 | Autopilot / docs-health | New stdlib implementation of requested behavior | package version; no dependency on Claude TSX runtime |
 | Headroom | https://github.com/headroomlabs-ai/headroom | external optional runtime; not vendored or auto-updated |
 | i-have-adhd | https://github.com/ayghri/i-have-adhd | 0.4.1, marketplace install record 1ecea1993b7fce257ffbd686c070948b5e07eda6; SKILL.md only, renamed ew-i-have-adhd |
+| Fable adapter (`ew-fable`) | Matt Shumer, "You're Prompting Fable 5.2 Wrong", https://www.youtube.com/watch?v=M--oC9_5HI8 | video dated 2026-11-11; one practitioner's report, paraphrased and mapped to this workflow, not measured here |
 | Implementation review | Original workflow integration | v0.2.0 producer guidance; private Daydreamer bundle and outbox |
 | Portfolio discovery standard | Open Thoughts `standards/portfolio-enrichment.json` and `docs/adr/ADR-002-eight-section-enrichment.md` | external versioned contract 1.0.0; source/version/hash pinned per project, not vendored |
 

@@ -28,11 +28,11 @@
   },
   "files": {
     "LICENSE": "1ff535e3e56012b4b3af3a3418968032d4da65977fe302952019e33c5304a7cd",
-    "README.md": "6f126768058e0fe19b41fb6e0ad6167cd6905133855aa954af56d663b443fa2f",
-    "SOURCES.md": "283253f7ce0f8fb0cc9a7eec8de358395ef5e05ec68f55858f1ac30dd814aa0d",
-    "VERSION": "a66780da23103beaf12432b418508966b31a2a3a787f9468a5b6cdaa8667c1ef",
+    "README.md": "4640a53abb17eb0eb26583cd182b850ccf83c5e86042424dc68f246c2de15b3b",
+    "SOURCES.md": "7126d967425da7d17c6304241b72b575d5de626a7dff5867c638834bc3821027",
+    "VERSION": "9d8c94f1ad3ea96b1e2ac4914fda4cb93c76b4a3e0d8cc6dd8976d6c0b227d15",
     "adapters/agy.md": "5306fc7efe9725375e7967dc95f9d9909127f0f44f8f4bd2ccb6b9c74b5255a9",
-    "adapters/claude.md": "d895be0cdb8ba5f61e198612d3a21aaa7e38ae0a254c0a25419cc203fd97ab65",
+    "adapters/claude.md": "dfb685293b0b587837b96f16e88342423aba2704b81a8a5bf7cb2fc95363e4fe",
     "adapters/codex.md": "87b2d59b19c608e7aa4aa2de93716e42a0a4892dc5c0255b234b6850b6620c13",
     "adapters/gemini.md": "151cd43297b5c1ff784e2975fc96ba516d68439171191607dea83941b4349b92",
     "core/REVIEW_CONTRACT.md": "298ba415ea78f5d8e9ce0ee3e4ce26b2f17cddc1e6f07b6d2d5384e22e2cec47",
@@ -42,6 +42,7 @@
     "skills/autopilot/SKILL.md": "48e03cfbaa4d01fa058f7f21db12ccf239ddaad3b1ed1c04b45b4808320da8cb",
     "skills/deploy-checklist/SKILL.md": "ec7a1df34b92b25c0df89e2d0f16b9f87d36c342a6488612d5ebb4156c00a13d",
     "skills/docs-health/SKILL.md": "8b5174f9c7eb096b374fccda48fff5d4d12efd958d333ed41c03b7548fc283db",
+    "skills/fable/SKILL.md": "7079282d4e51a32e128e0315041dbf1c39502034ca1331a26e214f41c6c97049",
     "skills/factory/SKILL.md": "066b6a25e6d92525ffa39c2dc3f44cb4a003772327ff011be78e2b2dfa3ba4c3",
     "skills/finishing-a-development-branch/SKILL.md": "8a672ffbf34feaabeb414c19fd705ed36f3310187e1605a3f9e45eacd150d5be",
     "skills/hill-climb/SKILL.md": "2eeb8d6633666e1bf2485c3514eb1a68f1ff9e37736e0d37ce51a4ccb50a7ad1",
@@ -163,13 +164,14 @@
     "workflow.py": "2815832eaaca586fbdb84bca002c5de667a4746b8a55a076513864b62d258ddc"
   },
   "name": "engineering-workflow",
-  "release": "v0.8.0",
+  "release": "v0.9.0",
   "repository": "https://github.com/JasonJosephIT/engineering-workflow.git",
   "schema": 1,
   "skills": {
     "ew-autopilot": "skills/autopilot",
     "ew-deploy-checklist": "skills/deploy-checklist",
     "ew-docs-health": "skills/docs-health",
+    "ew-fable": "skills/fable",
     "ew-factory": "skills/factory",
     "ew-finishing-a-development-branch": "skills/finishing-a-development-branch",
     "ew-hill-climb": "skills/hill-climb",
@@ -212,5 +214,5 @@
     "ew-verification-before-completion": "skills/verification-before-completion",
     "ew-workflow-update": "skills/workflow-update"
   },
-  "version": "0.8.0"
+  "version": "0.9.0"
 }
