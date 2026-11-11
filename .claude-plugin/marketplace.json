@@ -7,7 +7,7 @@
       "name": "engineering-workflow",
       "source": "./",
       "description": "The ew- workflow skills, vendored Matt Pocock and i-have-adhd skills, and the Guard / credential-scan / goal-continuation hooks.",
-      "version": "0.7.0"
+      "version": "0.8.0"
     }
   ]
 }
