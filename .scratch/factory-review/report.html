@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Factory review</title>
+<style>
+  :root {
+    --bg: #f7f6f2; --panel: #ffffff; --ink: #1c1d1f; --muted: #5d626b; --line: #dcd9d0;
+    --accent: #1f5f8b; --high: #a8321f; --med: #8a5a00; --low: #3d6b45; --chip: #efede6;
+    --code: #f0eee7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181b; --panel: #1e2125; --ink: #e8e6e1; --muted: #a0a6b0; --line: #33373d;
+      --accent: #7db8e0; --high: #f08a76; --med: #e0b25a; --low: #8fc49a; --chip: #2a2e34;
+      --code: #2a2e34;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+  main { max-width: 1040px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 1.7rem; line-height: 1.2; margin: 0 0 6px; text-wrap: balance; }
+  h2 { font-size: 1.15rem; margin: 40px 0 12px; padding-top: 16px; border-top: 1px solid var(--line); }
+  h3 { font-size: .8rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 22px 0 8px; }
+  p { margin: 0 0 12px; max-width: 72ch; }
+  .sub { color: var(--muted); font-size: .92rem; }
+  code { font: .86em ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--code);
+    padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+  .answer { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--accent);
+    border-radius: 8px; padding: 16px 18px; margin: 20px 0; }
+  .answer p:last-child { margin-bottom: 0; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 16px 0; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  .stat b { display: block; font-size: 1.35rem; font-variant-numeric: tabular-nums; }
+  .stat span { color: var(--muted); font-size: .85rem; }
+  .wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+  table { border-collapse: collapse; width: 100%; font-size: .92rem; }
+  th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  th { font-size: .75rem; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+  tr:last-child td { border-bottom: 0; }
+  td.n { font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
+  .tag { display: inline-block; font-size: .72rem; font-weight: 600; padding: 2px 7px; border-radius: 999px;
+    background: var(--chip); white-space: nowrap; }
+  .high { color: var(--high); } .med { color: var(--med); } .low { color: var(--low); }
+  .grp td { background: var(--chip); font-size: .75rem; letter-spacing: .05em; text-transform: uppercase;
+    color: var(--muted); padding: 6px 12px; }
+  ul { margin: 0 0 12px; padding-left: 20px; max-width: 72ch; }
+  li { margin-bottom: 6px; }
+  ol.plan { padding-left: 20px; max-width: 76ch; }
+  ol.plan li { margin-bottom: 10px; }
+  svg { display: block; width: 100%; height: auto; }
+  svg text { font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; fill: var(--ink); }
+  svg .box { fill: var(--panel); stroke: var(--line); stroke-width: 1.5; }
+  svg .new { stroke: var(--accent); }
+  svg .arrow { stroke: var(--muted); stroke-width: 1.5; fill: none; }
+  svg .iss { fill: var(--high); font-weight: 600; font-size: 12px; }
+  svg .cap { fill: var(--muted); font-size: 11.5px; }
+  .fig { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; overflow-x: auto; }
+  .fig svg { min-width: 720px; }
+  details { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin: 10px 0; }
+  summary { cursor: pointer; font-weight: 600; }
+  pre { background: var(--code); padding: 12px; border-radius: 6px; overflow-x: auto; font: .82rem/1.5 ui-monospace, Menlo, monospace; margin: 10px 0 4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Engineering workflow review: factory, climb and Agent Orchestrator</h1>
+  <p class="sub">Reviewed 2026-11-10 at main <code>79c5a3f</code> (VERSION 0.4.0). Markdown twin: <code>report.md</code>.</p>
+
+  <div class="answer">
+    <p><strong>The factory loop is sound, but the climb cannot run yet and two verified defects will bite the first queued run.</strong>
+    The installed runtime is the v0.4.0 tag, which has no climb or queue code. A worker's report can hang behind another ticket's merge gate, and the daily ticket cap resets every time the queue moves to the next feature.</p>
+    <p class="sub">Inputs: the request supplied none, so this repository is the only source. "Software Factory" is read as factory mode, "Hillclimb Factory" as the per-feature climb (<code>ew-hill-climb</code>), and "Agent Orchestre" as Agent Orchestrator (<code>--runner ao</code>). Missing: separate product specs for the three, and live AO behaviour. No <code>ao</code> or <code>orca</code> call was made.</p>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><b>152 / 152</b><span>tests pass (284 s); <code>verify</code> passes</span></div>
+    <div class="stat"><b>13</b><span>issues: 9 verified in code, 2 reproduced, 2 inferred</span></div>
+    <div class="stat"><b>2 PRs</b><span>on main but not in the installed runtime</span></div>
+    <div class="stat"><b>0</b><span>live runs of climb or queue so far</span></div>
+  </div>
+
+  <h2>1. Current state</h2>
+  <ul>
+    <li>Python owns the loop. <code>factory tick</code> claims tickets, launches one worker per ticket worktree, re-runs <code>gates.sh</code>, merges into an integration branch, enforces caps and holds high-risk work for approval.</li>
+    <li>Two runners: Orca (default) and Agent Orchestrator, which uses an hourly launchd job and an orchestrator session that relays NEEDS YOU messages.</li>
+    <li>New on main: one climb worker after every ticket merges, then the final review, then <code>factory queue</code> moves to the next feature.</li>
+    <li>Evidence so far: Orca has one live run, AO a two-ticket dry run. Climb and queue ran against the fake Orca only (STATUS, 2026-11-04).</li>
+  </ul>
+
+  <div class="fig" role="img" aria-label="Factory pipeline with the issue numbers that affect each stage">
+    <svg viewBox="0 0 980 190" xmlns="http://www.w3.org/2000/svg">
+      <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+      <g style="color: var(--muted)">
+        <path class="arrow" d="M150 60H178" marker-end="url(#a)"/><path class="arrow" d="M318 60H346" marker-end="url(#a)"/>
+        <path class="arrow" d="M486 60H514" marker-end="url(#a)"/><path class="arrow" d="M654 60H682" marker-end="url(#a)"/>
+        <path class="arrow" d="M822 60H850" marker-end="url(#a)"/>
+      </g>
+      <rect class="box" x="10" y="30" width="140" height="60" rx="8"/><text x="80" y="56" text-anchor="middle">Worker builds</text><text class="cap" x="80" y="74" text-anchor="middle">one per ticket</text>
+      <rect class="box" x="180" y="30" width="138" height="60" rx="8"/><text x="249" y="56" text-anchor="middle">Report</text><text class="cap" x="249" y="74" text-anchor="middle">approved / blocked</text>
+      <rect class="box" x="348" y="30" width="138" height="60" rx="8"/><text x="417" y="56" text-anchor="middle">Gate, then merge</text><text class="cap" x="417" y="74" text-anchor="middle">integration branch</text>
+      <rect class="box new" x="516" y="30" width="138" height="60" rx="8"/><text x="585" y="56" text-anchor="middle">Climb</text><text class="cap" x="585" y="74" text-anchor="middle">new, once per feature</text>
+      <rect class="box" x="684" y="30" width="138" height="60" rx="8"/><text x="753" y="56" text-anchor="middle">Final review</text><text class="cap" x="753" y="74" text-anchor="middle">dispatched, not awaited</text>
+      <rect class="box new" x="852" y="30" width="118" height="60" rx="8"/><text x="911" y="56" text-anchor="middle">Next feature</text><text class="cap" x="911" y="74" text-anchor="middle">new, queue</text>
+      <text class="iss" x="80" y="112" text-anchor="middle">#10</text><text class="cap" x="80" y="128" text-anchor="middle">self-review on AO</text>
+      <text class="iss" x="249" y="112" text-anchor="middle">#2</text><text class="cap" x="249" y="128" text-anchor="middle">waits on tick lock</text>
+      <text class="iss" x="417" y="112" text-anchor="middle">#4</text><text class="cap" x="417" y="128" text-anchor="middle">merged tree untested</text>
+      <text class="iss" x="585" y="112" text-anchor="middle">#6 #7 #8 #9</text><text class="cap" x="585" y="128" text-anchor="middle">score trusted, not checked</text>
+      <text class="iss" x="753" y="112" text-anchor="middle">#5</text><text class="cap" x="753" y="128" text-anchor="middle">no caps or result</text>
+      <text class="iss" x="911" y="112" text-anchor="middle">#3</text><text class="cap" x="911" y="128" text-anchor="middle">daily cap resets</text>
+      <text class="cap" x="10" y="168">Around the loop: #1 release drift · #11 heartbeat PATH (AO) · #12 LLM relay for NEEDS YOU (AO) · #13 stale docs and skill names</text>
+    </svg>
+  </div>
+
+  <h2>2. Issues and gaps</h2>
+  <p class="sub">Line numbers are in <code>factory.py</code> unless a file is named. "Reproduced" means run in this session.</p>
+  <div class="wrap">
+  <table>
+    <thead><tr><th>#</th><th>Issue</th><th>Evidence</th><th>Impact</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr class="grp"><td colspan="5">Release</td></tr>
+      <tr id="i1"><td class="n">1</td><td><strong>Main is unreleased and looks current.</strong> The installed runtime is tag v0.4.0 (<code>88a74c1</code>); main also says 0.4.0.</td><td>Installed <code>factory.py</code> has 0 mentions of climb, no <code>queue</code> action, no <code>skills/hill-climb</code>. Session check reports up to date.</td><td><span class="tag high">High</span></td><td>Verified</td></tr>
+      <tr class="grp"><td colspan="5">Factory core</td></tr>
+      <tr id="i2"><td class="n">2</td><td><strong>A worker's report waits behind a merge gate.</strong> Gates may run 90 minutes; agent commands time out within 10, so a finished ticket can end "interrupted".</td><td><code>report</code> takes the tick lock (<code>:1051</code>); <code>tick</code> holds it through gates (<code>:913-918</code>). 5.5 s wait behind a 6 s lock.</td><td><span class="tag high">High</span></td><td>Reproduced. <strong class="low">Fixed in 0.5.0</strong></td></tr>
+      <tr id="i3"><td class="n">3</td><td><strong>The daily cap resets between queued features.</strong></td><td><code>advance</code> clears the ledger (<code>:859</code>); the cap counts the ledger only (<code>:722</code>). Room went 0 → 3.</td><td><span class="tag high">High</span></td><td>Reproduced. <strong class="low">Fixed in 0.5.0</strong></td></tr>
+      <tr id="i4"><td class="n">4</td><td><strong>The gate tests the ticket branch, not the merged result.</strong> Two passing tickets can leave a red tip that the climb baselines on.</td><td><code>:522</code>, <code>:551</code>. On the Idea Shelf already (v2 post-merge verifier).</td><td><span class="tag med">Medium</span></td><td>Verified</td></tr>
+      <tr id="i5"><td class="n">5</td><td><strong>The final review is unsupervised.</strong> No ledger entry, liveness check, caps or result. The queue advances before findings exist.</td><td>"dispatched" is final (<code>:894</code>); on Orca it runs in the integration checkout while merges land (<code>:885</code>); <code>advance</code> at <code>:896</code>.</td><td><span class="tag med">Medium</span></td><td>Verified</td></tr>
+      <tr class="grp"><td colspan="5">Climb</td></tr>
+      <tr id="i6"><td class="n">6</td><td><strong>Code does not check the score.</strong> The merge trusts the worker's "approved", unlike tickets.</td><td>Only Status and Blast radius are parsed (<code>:398-404</code>); Metric, Target and Budget are prose.</td><td><span class="tag high">High</span></td><td>Verified</td></tr>
+      <tr id="i7"><td class="n">7</td><td><strong>Harness lock and held-out set rely on the agent</strong>, which can read and edit both.</td><td><code>skills/hill-climb/SKILL.md</code> steps 2-3; no check in <code>control_files</code> (<code>:529-536</code>).</td><td><span class="tag med">Medium</span></td><td>Verified</td></tr>
+      <tr id="i8"><td class="n">8</td><td><strong>Climbs share ticket caps</strong> (100 turns, 90 minutes). A 15-round budget probably caps first.</td><td>STATUS decision 2026-11-04; each round needs the metric and the gate through one build slot.</td><td><span class="tag med">Medium</span></td><td>Inferred</td></tr>
+      <tr id="i9"><td class="n">9</td><td><strong>One log path for every feature</strong>, and parallel-worktree advice that escapes hooks and caps.</td><td><code>hill-climb/log.md</code>; SKILL.md step 4; <code>in_ticket_worktree</code> (<code>:296-301</code>).</td><td><span class="tag low">Low</span></td><td>Verified</td></tr>
+      <tr class="grp"><td colspan="5">Agent Orchestrator</td></tr>
+      <tr id="i10"><td class="n">10</td><td><strong>Per-ticket review is not independent.</strong> AO workers cannot use subagents, so the implementer reviews itself.</td><td><code>skills/factory/SKILL.md:20</code>; WORKFLOW.md requires one independent reviewer.</td><td><span class="tag high">High</span></td><td>Verified</td></tr>
+      <tr id="i11"><td class="n">11</td><td><strong>Heartbeat PATH is minimal.</strong> A heartbeat-run gate may not find node or Homebrew tools.</td><td>PATH is ao, git, <code>/usr/bin</code>, <code>/bin</code> (<code>:200-201</code>).</td><td><span class="tag med">Medium</span></td><td>Inferred</td></tr>
+      <tr id="i12"><td class="n">12</td><td><strong>Notification rests on an LLM relay.</strong></td><td>Pings not retried (<code>:266-273</code>); spawn id regex-parsed from text (<code>:155</code>).</td><td><span class="tag med">Medium</span></td><td>Verified</td></tr>
+      <tr class="grp"><td colspan="5">Docs and packaging</td></tr>
+      <tr id="i13"><td class="n">13</td><td><strong>Docs and names lag the code.</strong></td><td><code>docs/factory-mode.md</code> says "proposal, nothing built"; <code>adapters/claude.md:18</code> names Orca only; briefs hard-code <code>ew-</code> names that plugin installs lack (<code>:608</code>).</td><td><span class="tag low">Low</span></td><td>Verified</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <details>
+    <summary>How issues 2 and 3 were reproduced</summary>
+    <pre># 2: hold tick.lock for 6 s (as tick does during a pre-merge gate), then report
+python3 -B workflow.py factory report 01 approved --detach --project &lt;repo&gt;
+real 5.52
+
+# 3: free_room before and after advance() clears the ledger
+room with 10 started today: 0
+room after advance clears the ledger: 3</pre>
+  </details>
+
+  <h2>3. Recommended improvements</h2>
+  <div class="wrap">
+  <table>
+    <thead><tr><th>#</th><th>Change</th><th>Why</th><th>Fixes</th><th>Size</th></tr></thead>
+    <tbody>
+      <tr id="r1"><td class="n">R1</td><td>Release main as v0.5.0 and reinstall. Make the session check compare lock digests, not only the tag.</td><td>The climb cannot run until it is installed, and two different builds share one version.</td><td class="n">1</td><td>Small</td></tr>
+      <tr id="r2"><td class="n">R2</td><td>Workers write <code>reports/&lt;id&gt;.json</code> atomically without the tick lock; <code>tick</code> consumes them.</td><td>A report must never wait on someone else's gate.</td><td class="n">2</td><td>Small</td></tr>
+      <tr id="r3"><td class="n">R3</td><td>Keep daily starts in <code>state.json</code>, keyed by date.</td><td>A spend cap must survive ledger archiving.</td><td class="n">3</td><td>Small</td></tr>
+      <tr id="r4"><td class="n">R4</td><td>Merge the integration tip into the ticket worktree, gate, then fast-forward.</td><td>The tested tree equals the merged tree.</td><td class="n">4</td><td>Medium</td></tr>
+      <tr id="r5"><td class="n">R5</td><td>Make the review a ledger entry: own worktree at the pinned tip, caps, a reported result. The queue advances on clean or on your approval.</td><td>Same supervision as tickets; nothing stacks on unreviewed code.</td><td class="n">5</td><td>Medium</td></tr>
+      <tr id="r6"><td class="n">R6</td><td>Code-owned climb. Validate <code>climb.md</code> at install and queue. <code>tick</code> measures baseline and final, and holds on no gain or harness changes. Caps come from Budget. One log per feature. No parallel worktrees when unattended.</td><td>Restores "tick trusts only its own run" for the climb.</td><td class="n">6-9</td><td>Large</td></tr>
+      <tr id="r7"><td class="n">R7</td><td>On AO, <code>tick</code> spawns a separate reviewer session when a worker reports (new state <code>reviewing</code>).</td><td>Restores independent review.</td><td class="n">10</td><td>Medium</td></tr>
+      <tr id="r8"><td class="n">R8</td><td><code>factory doctor --runner</code>: checks CLI reply shapes and runs the gate in the heartbeat's environment. Write <code>needs-you.md</code> beside the relay.</td><td>v0.3.1 was a reply-shape crash; notification should not need an LLM.</td><td class="n">11, 12</td><td>Medium</td></tr>
+      <tr id="r9"><td class="n">R9</td><td>Rewrite <code>docs/factory-mode.md</code> as the current reference, fix the adapter, resolve skill names from the lock.</td><td>Agents read these files as truth.</td><td class="n">13</td><td>Small</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p style="margin-top:12px"><strong>Order:</strong> R1, R2, R3 first (small, verified), then R6, R5, R4, R7.</p>
+
+  <h2>4. Integration considerations for Agent Orchestrator</h2>
+  <ul>
+    <li>macOS only. The heartbeat is hourly launchd, a backstop behind worker reports, so a dead worker can sit for an hour.</li>
+    <li>AO owns worktrees. The factory finds them by claim branch, so AO must keep one worktree per branch.</li>
+    <li>The brief forbids AO's PR workflow; nothing enforces it.</li>
+    <li>The bypass check reads two project-config keys (<code>:180-181</code>).</li>
+    <li>Unknown from this repo: AO's JSON contracts across versions, and whether <code>ao spawn</code> works under launchd's PATH. Record the tested AO version in state.</li>
+  </ul>
+
+  <h2>5. Validation plan</h2>
+  <ol class="plan">
+    <li><strong>Unit tests with the fake runners, one failing test per fix first.</strong> Report returns in under 1 s while the tick lock is held. The daily cap holds across <code>advance</code>. Two individually green tickets that break together are stopped. A climb with no metric gain or a changed harness is held. A silent reviewer is capped.</li>
+    <li><strong>Contract check.</strong> <code>factory doctor</code> against real Orca and AO.</li>
+    <li><strong>Live AO run on a throwaway repo.</strong> Two tickets, a <code>climb.md</code> and one queued feature, with a 3-minute gate, <code>daily_ticket_cap 2</code>, one forced NEEDS YOU and one heartbeat-only tick. Pass: nothing interrupted, cap holds, message arrives, score recorded by code.</li>
+    <li><strong>Release.</strong> Full tests, <code>verify --expected 0.5.0</code>, <code>freeze</code>, then a fresh session shows <code>ew-hill-climb</code>.</li>
+  </ol>
+
+  <h2>Left out on purpose</h2>
+  <p class="sub">Items already listed as open in STATUS.md (the worker-writable <code>state_dir</code> marker, Guard not being a sandbox in bypass mode, untested git timeouts) are not repeated here. Nothing was changed in the code; this is a review only.</p>
+</main>
+</body>
+</html>
