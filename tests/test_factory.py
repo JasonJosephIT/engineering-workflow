@@ -504,9 +504,9 @@ class FactoryTests(unittest.TestCase):
         self.set_state(build_slots=2)
         self.slow_gate(1)
         runs = [self.start_gate(), self.start_gate()]
-        begin = time.time()
         self.assertEqual([r.wait(timeout=30) for r in runs], [0, 0])
-        self.assertLess(time.time() - begin, 1.9)
+        marks = [line.split()[0] for line in (self.base / 'runs.log').read_text().splitlines()]
+        self.assertEqual(marks, ['start', 'start', 'end', 'end'])  # overlap, whatever the machine's speed
 
     def test_tick_merge_gate_goes_through_the_queue_and_records_times(self):
         self.cli('install', '--feature', 'demo'); self.cli('tick')
