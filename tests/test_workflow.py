@@ -45,6 +45,14 @@ class WorkflowTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             workflow.verify(expected="99.0.0")
 
+    def test_npm_package_matches_version_and_ships_locked_files(self):
+        package = json.loads((ROOT / "package.json").read_text())
+        self.assertEqual(package["version"], (ROOT / "VERSION").read_text().strip())
+        shipped = tuple(f.rstrip("/") for f in package["files"])
+        for name in workflow.read_json(ROOT / "workflow.lock.json")["files"]:
+            self.assertTrue(name in shipped or name.split("/")[0] in shipped
+                            or name in ("README.md", "LICENSE"), name)
+
     def test_claude_plugin_manifest_matches_package_and_hooks_run(self):
         version = (ROOT / "VERSION").read_text().strip()
         manifest = json.loads((ROOT / ".claude-plugin/plugin.json").read_text())
