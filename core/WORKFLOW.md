@@ -157,6 +157,10 @@ Trust current code over a stale map. SessionStart starts a background refresh
 when the map is stale; after integration run `workflow.py graph` and commit
 docs/map/. A repository that still commits graphify-out/ migrates once with
 `workflow.py graph --migrate`. Report when Graphify is missing.
+Hand map building and area naming to AO workers (MiMo by default) with
+`workflow.py graph --handoff <ao-project> [--handoff ...] --spawn`: one worker per
+workspace builds the map, names its areas in docs/map/labels.json and opens a PR.
+Without --spawn it prints the plan. The coordinator writes the brief, never the map.
 
 A workspace is the folder the workflow runs in; a project groups workspaces (for
 example project Hercules with workspaces Herculean_plugin and Hercules platform).

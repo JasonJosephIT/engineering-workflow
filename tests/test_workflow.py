@@ -407,5 +407,25 @@ class WorkflowTests(unittest.TestCase):
             self.assertIn("Project: **hercules** · workspace: **herculean-plugin** · other workspaces: hercules-platform", text)
 
 
+    def test_graph_handoff_briefs_one_worker_per_workspace_without_spawning(self):
+        import graphmap
+        graphmap.set_identity(self.project, "hercules", "herculean")
+        plan = graphmap.handoff(self.project, ["herculean", "hercules-platform"], "/wf/workflow.py")
+        self.assertEqual([j["ao_project"] for j in plan["jobs"]], ["herculean", "hercules-platform"])
+        self.assertIn("--harness mimo-code", plan["jobs"][0]["command"])
+        self.assertNotIn("spawned", plan["jobs"][0])
+        self.assertIn("python3 -B /wf/workflow.py graph --project .", plan["brief"])
+
+    def test_map_uses_worker_labels(self):
+        env, _ = self.fake_graphify()
+        (self.project / "a.py").write_text("x = 1\n"); self.commit_all("code")
+        (self.project / "docs/map").mkdir(parents=True)
+        (self.project / "docs/map/labels.json").write_text('{"src/f0.py": "Session start"}')
+        import graphmap
+        with patch.dict(os.environ, env):
+            graphmap.build(self.project)
+        self.assertIn("### Session start", (self.project / "docs/map/MAP.md").read_text())
+
+
 if __name__ == "__main__":
     unittest.main()

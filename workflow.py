@@ -685,6 +685,10 @@ def main():
     ws.add_argument("--name", help="Workspace name (default: folder name)")
     gr.add_argument("--project", default="."); gr.add_argument("--migrate", action="store_true",
                     help="Move a committed graphify-out/ to the central store first")
+    gr.add_argument("--handoff", metavar="AO_PROJECT", action="append",
+                    help="Brief an AO worker in this AO project to build and label the map (repeatable)")
+    gr.add_argument("--harness", default="mimo-code"); gr.add_argument("--spawn", action="store_true",
+                    help="With --handoff: actually start the AO workers (default prints the plan)")
     g = sub.add_parser("goal"); g.add_argument("action", choices=("set", "status", "pause", "resume", "complete", "blocked"))
     g.add_argument("objective", nargs="?"); g.add_argument("--project", default="."); g.add_argument("--evidence")
     h = sub.add_parser("hook"); h.add_argument("--platform", choices=PLATFORMS, required=True)
@@ -725,7 +729,12 @@ def main():
             print(json.dumps(graphmap.set_identity(root, a.of, a.name) if a.of else graphmap.identity(root), indent=2))
         elif a.command == "graph":
             import graphmap
-            print(json.dumps(graphmap.build(find_project(a.project), a.migrate), indent=2))
+            root = find_project(a.project)
+            if a.handoff:
+                print(json.dumps(graphmap.handoff(root, a.handoff, Path.home() / ".engineering-workflow/workflow.py",
+                                                  a.spawn, a.harness), indent=2))
+            else:
+                print(json.dumps(graphmap.build(root, a.migrate), indent=2))
         elif a.command == "goal": goal(a)
         elif a.command == "hook":
             print(json.dumps(hook(a.platform, data, event=a.event)))

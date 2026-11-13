@@ -12,6 +12,7 @@ import sys
 import time
 
 MAP = Path("docs/map/MAP.md")
+LABELS = Path("docs/map/labels.json")  # {"<area main file>": "<plain name>"}, written by a labeling worker
 OUT = "graphify-out"
 EXCLUDE = (":(exclude)docs/map", ":(exclude)" + OUT, ":(exclude).gitignore")
 LOCK_AGE = 900  # seconds before a background refresh lock counts as abandoned
@@ -124,7 +125,7 @@ def _build(project):
         run("cluster-only", ".", "--no-label")
 
 
-def render(graph, commit, ident=None, others=()):
+def render(graph, commit, ident=None, others=(), labels=None):
     nodes, links = graph.get("nodes", []), graph.get("links", graph.get("edges", []))
     degree = Counter()
     for e in links:
@@ -150,8 +151,10 @@ def render(graph, commit, ident=None, others=()):
     for cid, members in ranked[:40]:
         if len(members) < 3:
             continue
-        name = next((m.get("community_name") for m in members if m.get("community_name")), None) or f"Community {cid}"
         files = Counter(m.get("source_file") for m in members if m.get("source_file"))
+        main = files.most_common(1)[0][0] if files else ""
+        name = (labels or {}).get(main) or next(
+            (m.get("community_name") for m in members if m.get("community_name")), None) or f"Community {cid}"
         lines.append(f"### {name} ({len(members)})")
         lines += [f"- `{f}`" for f, _ in files.most_common(6)]
         lines.append("")
@@ -174,7 +177,8 @@ def build(project, migrate=False):
     out = project / MAP
     out.parent.mkdir(parents=True, exist_ok=True)
     ident = identity(project)
-    out.write_text(render(json.loads(graph_path.read_text()), commit, ident, siblings(project)))
+    labels = json.loads((project / LABELS).read_text()) if (project / LABELS).is_file() else {}
+    out.write_text(render(json.loads(graph_path.read_text()), commit, ident, siblings(project), labels))
     return {"graph": "refreshed", "map": str(MAP), "store": str(home), **ident,
             "next": "commit docs/map/ and .gitignore with the change"}
 
@@ -197,3 +201,39 @@ def refresh_in_background(project, workflow_py):
     subprocess.Popen([sys.executable, "-c", script], cwd=project, stdout=log, stderr=log,
                      stdin=subprocess.DEVNULL, start_new_session=True)
     return "started in background; commit docs/map/ when it updates (log in store/refresh.log)"
+
+
+HANDOFF = """You are a graph worker for workspace {workspace} of project {project}.
+Engineering workflow, Graphify overlay. Do only this:
+1. Run: python3 -B {workflow} graph --project .{migrate}
+   (code-only Graphify build, no LLM; writes docs/map/MAP.md).
+2. Name the areas. For each `### Community N` heading in docs/map/MAP.md, read its listed files
+   and pick a 2-4 word plain name. Write docs/map/labels.json as {{"<first file listed>": "<name>"}}.
+   Keep existing entries that still match. No other files.
+3. Run step 1 again so MAP.md uses the names.
+4. Commit docs/map/ and .gitignore{migrate_note} on your branch and open a PR titled
+   "Code map: {workspace}". Do not edit source code.
+5. Report done with the PR link, or blocked with the exact error.
+"""
+
+
+def handoff(root, ao_projects, workflow_py, spawn=False, harness="mimo-code"):
+    """Brief one AO worker (MiMo by default) per workspace to build and label its code map."""
+    root = Path(root)
+    ident = identity(root)
+    legacy = (root / OUT).exists() and not (root / OUT).is_symlink()
+    brief = HANDOFF.format(workspace=ident["workspace"], project=ident["project"], workflow=workflow_py,
+                           migrate=" --migrate" if legacy else "",
+                           migrate_note=" (and the graphify-out/ removal)" if legacy else "")
+    jobs = []
+    for ao in ao_projects:
+        command = ["ao", "spawn", "--project", ao, "--harness", harness,
+                   "--name", f"graph: {ao}", "--prompt", brief]
+        job = {"ao_project": ao, "command": " ".join(command[:7]) + " --prompt <brief>"}
+        if spawn:
+            r = subprocess.run(command, capture_output=True, text=True, timeout=60)
+            job["spawned"] = r.returncode == 0
+            job["reply"] = (r.stdout or r.stderr).strip()[-300:]
+        jobs.append(job)
+    return {"workspace": ident, "brief": brief, "jobs": jobs,
+            "note": "pass --spawn to start the workers" if not spawn else "workers started; review their PRs"}

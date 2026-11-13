@@ -28,7 +28,7 @@
   },
   "files": {
     "LICENSE": "1ff535e3e56012b4b3af3a3418968032d4da65977fe302952019e33c5304a7cd",
-    "README.md": "91c8831a82cc689fdfb084ea3e32d346f0f490cbac67e9cf2398266f017926ea",
+    "README.md": "e84fac12596fb438e7ead40b4421de4b9e957791c510363d14a8bc7f36bce94e",
     "SOURCES.md": "7126d967425da7d17c6304241b72b575d5de626a7dff5867c638834bc3821027",
     "VERSION": "179a5390966e85c2071a87c1b31de13df67460665196f6529f8c4986842f81e5",
     "adapters/agy.md": "5306fc7efe9725375e7967dc95f9d9909127f0f44f8f4bd2ccb6b9c74b5255a9",
@@ -36,9 +36,9 @@
     "adapters/codex.md": "87b2d59b19c608e7aa4aa2de93716e42a0a4892dc5c0255b234b6850b6620c13",
     "adapters/gemini.md": "151cd43297b5c1ff784e2975fc96ba516d68439171191607dea83941b4349b92",
     "core/REVIEW_CONTRACT.md": "298ba415ea78f5d8e9ce0ee3e4ce26b2f17cddc1e6f07b6d2d5384e22e2cec47",
-    "core/WORKFLOW.md": "9b8dc07dfb04dc2c2bc065fa56165c5d918762bb2a94dff15e56234ad8760d70",
+    "core/WORKFLOW.md": "ac99b25d7c08348ddd1864a6b29c4dee5758b1b69e30bbb60b1312403418ff3e",
     "factory.py": "24b137605334dfa46b842d4724e4adddffaf173c6c19a19b13f07070ad7b3a22",
-    "graphmap.py": "e5d60d6acb4394425f231cdfb25eaaa330454b39dba273ac94728113e02af8ef",
+    "graphmap.py": "10b0fa06095b70fd5ada1741c24260fb20ea973d9438510f3f671044606ade77",
     "reviews.py": "8c14cdfea96555862ca413fc9d2ecd4b84e6b9a00e99b78c68934e32ef31ea95",
     "skills/autopilot/SKILL.md": "48e03cfbaa4d01fa058f7f21db12ccf239ddaad3b1ed1c04b45b4808320da8cb",
     "skills/deploy-checklist/SKILL.md": "ec7a1df34b92b25c0df89e2d0f16b9f87d36c342a6488612d5ebb4156c00a13d",
@@ -162,7 +162,7 @@
     "vendor/mattpocock/skills/productivity/writing-for-agents/SKILL-MECHANICS.md": "c768e6307c7c10728c401c213f2c4ba71c542127eeb7ad2956aabd15a0fa0059",
     "vendor/mattpocock/skills/productivity/writing-for-agents/SKILL.md": "7e3a8a88fc251fae5224405967fc7731313c2767c732cdf77c78a4855a682580",
     "vendor/mattpocock/skills/productivity/writing-for-agents/agents/openai.yaml": "eacb24b2a618cfb81dacb0416f4fdd75ddf3a8060f8ddb99aae1b1e301907e4b",
-    "workflow.py": "7ee93cf4bba4bf16482873e3fb32876313f3116248432a4656994d27c8b50e1b"
+    "workflow.py": "aa05d93cc9a68470918519fed4a4af33dcbf17e096d39c886929fffbef2f4085"
   },
   "name": "engineering-workflow",
   "release": "v0.9.1",

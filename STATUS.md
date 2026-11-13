@@ -41,6 +41,13 @@ Review: `.scratch/factory-review/report.md` + `.html`.
 
 ## Decisions
 
+- 2026-11-13: Graphify overlay (branch `feat/wool-mode`, not released). Graphify is mandatory and
+  never copied per project: `workflow.py graph` builds code-only with the global CLI, keeps the heavy
+  graph in `~/.graphify/projects/<project>/<workspace>/` (`graphify-out/` = gitignored symlink),
+  commits only `docs/map/MAP.md` (+ `labels.json`). SessionStart refreshes in the background when
+  stale. Workspace vs project: `.engineering-workflow-workspace.json` via `workflow.py workspace --of`.
+  Building and area naming hand off to AO MiMo workers (`graph --handoff <ao-project> --spawn`).
+
 - 2026-11-13: Wool mode (`install --wool`, branch `feat/wool-mode`, not released). Completion
   verification and docs upkeep (docs-health, glossary/ADR) become optional, run only
   when asked. Graphify stays mandatory. Opt-in; the default stays strict. Integrity, Guard, TDD and review gates unchanged.
