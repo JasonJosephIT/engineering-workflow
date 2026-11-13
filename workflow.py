@@ -203,6 +203,10 @@ def merge_hooks(data, additions):
 
 OVERLAP = {"claude-guard", "headroom", "autopilot", "docs-health", "i-have-adhd"}
 ADHD_SKILL = "vendor/i-have-adhd/skills/i-have-adhd/SKILL.md"
+WOOL_RULES = ("WOOL MODE ACTIVE. ew-verification-before-completion and docs upkeep "
+              "(ew-docs-health, glossary/ADR updates, graph refresh after integration) are optional: "
+              "skip them unless the user asks. Still report honestly what was and was not checked. "
+              "Install integrity, Guard and review gates are unchanged.")
 RETIRED = {"superpowers", "engineering", "claude-taskmaster", "entertainment", "runpod"}
 
 
@@ -333,7 +337,7 @@ def install(args):
         shutil.copy2(ROOT / "workflow.lock.json", stage / "workflow.lock.json")
         state = {"version": lock["version"], "release": lock["release"], "source_commit": git("rev-parse", "HEAD", cwd=ROOT),
                  "lock_sha256": digest((ROOT / "workflow.lock.json").read_bytes()), "repository": REPOSITORY,
-                 "platforms": platforms, "scope": args.scope, "headroom": args.headroom, "adhd": args.adhd,
+                 "platforms": platforms, "scope": args.scope, "headroom": args.headroom, "adhd": args.adhd, "wool": args.wool,
                  "hooks": "configured; live platform execution not verified"}
         (stage / "install.json").write_bytes(encoded(state))
         if runtime.exists():
@@ -590,6 +594,9 @@ def hook(platform, data, event=None):
             rules = ("\n\nADHD MODE ACTIVE (always-on). The ruleset below applies to every response. "
                      '"stop adhd mode" turns it off for this session.\n\n' + rules)
             report["adhd"] = "always-on ruleset injected"
+        if state.get("wool"):
+            rules += ("\n\n" + WOOL_RULES)
+            report["wool"] = "verification and docs optional"
         p = goal_path(project)
         if p.exists(): report["goal"] = read_json(p)
         return context_output(platform, event, json.dumps(report) + rules)
@@ -662,6 +669,7 @@ def main():
     i.add_argument("--project", default="."); i.add_argument("--home", default=str(Path.home()))
     i.add_argument("--headroom", action="store_true"); i.add_argument("--dry-run", action="store_true")
     i.add_argument("--adhd", action="store_true", help="Inject the vendored i-have-adhd ruleset at every session start")
+    i.add_argument("--wool", action="store_true", help="Wool mode: completion verification and docs upkeep become optional")
     i.add_argument("--expected")
     i.add_argument("--replace-overlap", action="store_true",
                    help="Disable selected duplicate/retired plugins and old Headroom startup/shell hooks")

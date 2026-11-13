@@ -151,6 +151,11 @@ Read graph navigation before broad exploration when present; trust current code
 over a stale graph. Refresh and commit graph output after integration if Graphify
 is installed. Graphify is optional and not bundled; report when refresh is skipped.
 
+Wool mode (installed with `--wool`) makes completion verification and docs upkeep
+optional: skip ew-verification-before-completion, ew-docs-health, glossary/ADR
+updates and graph refresh unless the user asks. Never claim a check that did not
+run. Install integrity, Guard, TDD and review gates are unchanged.
+
 ## Scope and overlap
 
 The selected bundle owns planning, SDD, Ponytail, Guard, goal persistence and

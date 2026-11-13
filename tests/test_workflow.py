@@ -178,7 +178,7 @@ class WorkflowTests(unittest.TestCase):
             return atomic(path, content)
 
         args = Namespace(scope="project", project=str(self.project), home=str(self.base),
-            platform="all", expected=None, headroom=False, adhd=False, dry_run=False, replace_overlap=False)
+            platform="all", expected=None, headroom=False, adhd=False, wool=False, dry_run=False, replace_overlap=False)
         with patch.object(workflow, "write_atomic", side_effect=fail_config):
             with self.assertRaises(PermissionError):
                 workflow.install(args)
@@ -224,6 +224,19 @@ class WorkflowTests(unittest.TestCase):
         self.assertTrue((self.project / ".claude/skills/ew-i-have-adhd").is_symlink())
         self.install()
         self.assertNotIn("ADHD MODE", start())
+
+    def test_wool_rules_injected_only_when_installed_with_flag(self):
+        def start():
+            r = subprocess.run([sys.executable, "-B", str(self.project / ".engineering-workflow/workflow.py"),
+                "hook", "--platform", "claude"], input=json.dumps({"hook_event_name": "SessionStart",
+                "cwd": str(self.project)}), text=True, capture_output=True, check=True)
+            return json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+        self.install("--wool")
+        context = start()
+        self.assertIn('"wool": "verification and docs optional"', context)
+        self.assertIn("WOOL MODE ACTIVE", context)
+        self.install()
+        self.assertNotIn("WOOL MODE", start())
 
     def test_guard_allow_and_block_all_platform_protocols(self):
         for platform, event, tool in (("claude", "PreToolUse", "Bash"),

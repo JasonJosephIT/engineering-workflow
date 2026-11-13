@@ -53,6 +53,10 @@ active. Native Codex tools may have their own context management; do not add
 another proxy by default. TypeSafe's installed plugin supplies semantic AI APIs,
 not computer control. Keep it separate unless a project actually uses it.
 
+Add `--wool` for wool mode: completion verification (`ew-verification-before-completion`)
+and docs upkeep (`ew-docs-health`, glossary/ADR updates, graph refresh) become optional,
+run only when asked. Integrity, Guard, TDD and review gates stay on.
+
 Add `--adhd` to load the vendored i-have-adhd ruleset (`ew-i-have-adhd`) at every
 session start. The same single startup hook injects it; only Claude has session
 evidence so far. Without the flag the skill
