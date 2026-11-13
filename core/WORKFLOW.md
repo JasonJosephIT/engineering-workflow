@@ -152,9 +152,9 @@ over a stale graph. Refresh and commit graph output after integration if Graphif
 is installed. Graphify is optional and not bundled; report when refresh is skipped.
 
 Wool mode (installed with `--wool`) makes completion verification and docs upkeep
-optional: skip ew-verification-before-completion, ew-docs-health, glossary/ADR
-updates and graph refresh unless the user asks. Never claim a check that did not
-run. Install integrity, Guard, TDD and review gates are unchanged.
+optional: skip ew-verification-before-completion, ew-docs-health and glossary/ADR
+updates unless the user asks. Graphify stays mandatory: graph navigation first,
+refresh after integration. Never claim a check that did not run. Install integrity, Guard, TDD and review gates are unchanged.
 
 ## Scope and overlap
 

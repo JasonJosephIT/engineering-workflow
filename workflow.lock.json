@@ -28,7 +28,7 @@
   },
   "files": {
     "LICENSE": "1ff535e3e56012b4b3af3a3418968032d4da65977fe302952019e33c5304a7cd",
-    "README.md": "2ffe8361e7f4f189d55185165b918bf5b892c6ef510566c8ce56c1cc4a287777",
+    "README.md": "11363ed5c731bf493bafa0cbef89be309aa55a9831b2fbc690d2b9d690dda3cc",
     "SOURCES.md": "7126d967425da7d17c6304241b72b575d5de626a7dff5867c638834bc3821027",
     "VERSION": "179a5390966e85c2071a87c1b31de13df67460665196f6529f8c4986842f81e5",
     "adapters/agy.md": "5306fc7efe9725375e7967dc95f9d9909127f0f44f8f4bd2ccb6b9c74b5255a9",
@@ -36,7 +36,7 @@
     "adapters/codex.md": "87b2d59b19c608e7aa4aa2de93716e42a0a4892dc5c0255b234b6850b6620c13",
     "adapters/gemini.md": "151cd43297b5c1ff784e2975fc96ba516d68439171191607dea83941b4349b92",
     "core/REVIEW_CONTRACT.md": "298ba415ea78f5d8e9ce0ee3e4ce26b2f17cddc1e6f07b6d2d5384e22e2cec47",
-    "core/WORKFLOW.md": "5b8b7b9e0ab2ad1badcc844ace64e57e753f5d0c2a78d74f333cf4ee14b3084f",
+    "core/WORKFLOW.md": "05854664eb3daa0455e419ab32766120e911ca158c03da6366617974e5681782",
     "factory.py": "24b137605334dfa46b842d4724e4adddffaf173c6c19a19b13f07070ad7b3a22",
     "reviews.py": "8c14cdfea96555862ca413fc9d2ecd4b84e6b9a00e99b78c68934e32ef31ea95",
     "skills/autopilot/SKILL.md": "48e03cfbaa4d01fa058f7f21db12ccf239ddaad3b1ed1c04b45b4808320da8cb",
@@ -161,7 +161,7 @@
     "vendor/mattpocock/skills/productivity/writing-for-agents/SKILL-MECHANICS.md": "c768e6307c7c10728c401c213f2c4ba71c542127eeb7ad2956aabd15a0fa0059",
     "vendor/mattpocock/skills/productivity/writing-for-agents/SKILL.md": "7e3a8a88fc251fae5224405967fc7731313c2767c732cdf77c78a4855a682580",
     "vendor/mattpocock/skills/productivity/writing-for-agents/agents/openai.yaml": "eacb24b2a618cfb81dacb0416f4fdd75ddf3a8060f8ddb99aae1b1e301907e4b",
-    "workflow.py": "cd09022d9889bedb3aac6b8ab8b83dfc377b84b11b780c6c0ea0c0c6929cabc2"
+    "workflow.py": "b2091c05b89a3084b7d364129b879532caaa7ec0f46f2f2cd371bec16a210fa0"
   },
   "name": "engineering-workflow",
   "release": "v0.9.1",

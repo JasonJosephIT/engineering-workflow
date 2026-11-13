@@ -42,8 +42,8 @@ Review: `.scratch/factory-review/report.md` + `.html`.
 ## Decisions
 
 - 2026-11-13: Wool mode (`install --wool`, branch `feat/wool-mode`, not released). Completion
-  verification and docs upkeep (docs-health, glossary/ADR, graph refresh) become optional, run only
-  when asked. Opt-in; the default stays strict. Integrity, Guard, TDD and review gates unchanged.
+  verification and docs upkeep (docs-health, glossary/ADR) become optional, run only
+  when asked. Graphify stays mandatory. Opt-in; the default stays strict. Integrity, Guard, TDD and review gates unchanged.
 
 - 2026-11-11: v0.9.1, the build-slots test checks overlap, not wall-clock time.
   `test_more_build_slots_let_gates_run_together` allowed 1.9 s for two parallel 1 s gates. On a

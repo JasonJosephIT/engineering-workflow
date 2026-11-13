@@ -204,8 +204,9 @@ def merge_hooks(data, additions):
 OVERLAP = {"claude-guard", "headroom", "autopilot", "docs-health", "i-have-adhd"}
 ADHD_SKILL = "vendor/i-have-adhd/skills/i-have-adhd/SKILL.md"
 WOOL_RULES = ("WOOL MODE ACTIVE. ew-verification-before-completion and docs upkeep "
-              "(ew-docs-health, glossary/ADR updates, graph refresh after integration) are optional: "
-              "skip them unless the user asks. Still report honestly what was and was not checked. "
+              "(ew-docs-health, glossary/ADR updates) are optional: skip them unless the user asks. "
+              "Graphify stays mandatory: read the graph first and refresh it after integration. "
+              "Still report honestly what was and was not checked. "
               "Install integrity, Guard and review gates are unchanged.")
 RETIRED = {"superpowers", "engineering", "claude-taskmaster", "entertainment", "runpod"}
 
