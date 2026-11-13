@@ -415,6 +415,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("--harness mimo-code", plan["jobs"][0]["command"])
         self.assertNotIn("spawned", plan["jobs"][0])
         self.assertIn("python3 -B /wf/workflow.py graph --project .", plan["brief"])
+        self.assertIn("workspace --project . --of hercules --name herculean", plan["brief"])
+        self.assertIn("--name 'graph: herculean'", plan["jobs"][0]["command"])
 
     def test_map_uses_worker_labels(self):
         env, _ = self.fake_graphify()

@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -205,13 +206,15 @@ def refresh_in_background(project, workflow_py):
 
 HANDOFF = """You are a graph worker for workspace {workspace} of project {project}.
 Engineering workflow, Graphify overlay. Do only this:
+0. Run: python3 -B {workflow} workspace --project . --of {project} --name {workspace}
+   (your worktree folder name differs; this pins the graph store to {project}/{workspace}).
 1. Run: python3 -B {workflow} graph --project .{migrate}
    (code-only Graphify build, no LLM; writes docs/map/MAP.md).
 2. Name the areas. For each `### Community N` heading in docs/map/MAP.md, read its listed files
    and pick a 2-4 word plain name. Write docs/map/labels.json as {{"<first file listed>": "<name>"}}.
    Keep existing entries that still match. No other files.
 3. Run step 1 again so MAP.md uses the names.
-4. Commit docs/map/ and .gitignore{migrate_note} on your branch and open a PR titled
+4. Commit docs/map/, .gitignore, .engineering-workflow-workspace.json{migrate_note} on your branch and open a PR titled
    "Code map: {workspace}". Do not edit source code.
 5. Report done with the PR link, or blocked with the exact error.
 """
@@ -229,7 +232,7 @@ def handoff(root, ao_projects, workflow_py, spawn=False, harness="mimo-code"):
     for ao in ao_projects:
         command = ["ao", "spawn", "--project", ao, "--harness", harness,
                    "--name", f"graph: {ao}", "--prompt", brief]
-        job = {"ao_project": ao, "command": " ".join(command[:7]) + " --prompt <brief>"}
+        job = {"ao_project": ao, "command": " ".join(shlex.quote(c) for c in command[:8]) + " --prompt <brief>"}
         if spawn:
             r = subprocess.run(command, capture_output=True, text=True, timeout=60)
             job["spawned"] = r.returncode == 0
