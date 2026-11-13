@@ -145,11 +145,25 @@ authorized by the user. Never discard work or force-push without explicit consen
 Preserve harness-owned worktrees. A release requires separate release validation.
 
 Use GLOSSARY.md (or GLOSSARY-MAP.md), docs/adr/, operational docs/agents/ tracker
-configuration, and generated graphify-out/GRAPH_REPORT.md. Specs and tickets are
+configuration, and the generated code map docs/map/MAP.md. Specs and tickets are
 intent, so retain them. Avoid hand-written documentation restating implementation.
-Read graph navigation before broad exploration when present; trust current code
-over a stale graph. Refresh and commit graph output after integration if Graphify
-is installed. Graphify is optional and not bundled; report when refresh is skipped.
+
+Graphify is mandatory; the project never copies the plugin. `workflow.py graph`
+runs the global Graphify CLI code-only (no LLM), keeps the heavy graph in
+~/.graphify/projects/<project>/<workspace>/ (graphify-out/ is a gitignored
+symlink to it) and writes the thin committed docs/map/MAP.md. Read MAP.md before
+broad exploration; locally, `graphify explain|path|affected` query the full graph.
+Trust current code over a stale map. SessionStart starts a background refresh
+when the map is stale; after integration run `workflow.py graph` and commit
+docs/map/. A repository that still commits graphify-out/ migrates once with
+`workflow.py graph --migrate`. Report when Graphify is missing.
+
+A workspace is the folder the workflow runs in; a project groups workspaces (for
+example project Hercules with workspaces Herculean_plugin and Hercules platform).
+`workflow.py workspace --of <project>` records membership in
+.engineering-workflow-workspace.json (commit it). Without it a folder is its own
+project. The session report shows both; keep each workspace's tickets and
+STATUS.md scoped to that workspace.
 
 Wool mode (installed with `--wool`) makes completion verification and docs upkeep
 optional: skip ew-verification-before-completion, ew-docs-health and glossary/ADR

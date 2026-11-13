@@ -15,6 +15,7 @@
     "workflow.py",
     "reviews.py",
     "factory.py",
+    "graphmap.py",
     "workflow.lock.json",
     "VERSION",
     "SOURCES.md",

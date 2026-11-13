@@ -327,6 +327,85 @@ class WorkflowTests(unittest.TestCase):
         self.assertFalse(data["tracker_configured"])
         with self.assertRaises(ValueError): workflow.docs(self.project, refresh=True)
 
+    def fake_graphify(self):
+        """A stand-in CLI that writes a tiny graph.json into graphify-out/ and logs its calls."""
+        bin_dir = self.base / "bin"; bin_dir.mkdir(exist_ok=True)
+        tool = bin_dir / "graphify"
+        tool.write_text("#!/usr/bin/env python3\nimport json,pathlib,sys\n"
+            "pathlib.Path('graphify-out').mkdir(exist_ok=True)\n"
+            "open(pathlib.Path(sys.argv[0]).parent/'calls','a').write(' '.join(sys.argv[1:])+'\\n')\n"
+            "n=[{'id':f'n{i}','label':f'Node{i}','community':i%2,'community_name':['Core','UI'][i%2],"
+            "'source_file':f'src/f{i%3}.py'} for i in range(8)]\n"
+            "l=[{'source':'n0','target':f'n{i}'} for i in range(1,8)]\n"
+            "json.dump({'nodes':n,'links':l},open('graphify-out/graph.json','w'))\n")
+        tool.chmod(0o755)
+        env = {"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}", "EW_GRAPH_STORE": str(self.base / "store")}
+        return env, bin_dir / "calls"
+
+    def commit_all(self, message):
+        subprocess.run(["git", "-C", str(self.project), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(self.project), "-c", "user.name=t", "-c", "user.email=t@t",
+                        "commit", "-q", "-m", message], check=True)
+
+    def test_graph_overlay_builds_thin_map_and_keeps_heavy_graph_out_of_repo(self):
+        env, calls = self.fake_graphify()
+        (self.project / "a.py").write_text("x = 1\n"); self.commit_all("code")
+        with patch.dict(os.environ, env):
+            result = workflow.docs(self.project, refresh=True)
+            out = self.project / "graphify-out"
+            self.assertTrue(out.is_symlink())
+            self.assertTrue(str(out.resolve()).startswith(str((self.base / "store").resolve())))
+            self.assertIn("graphify-out", (self.project / ".gitignore").read_text())
+            text = (self.project / "docs/map/MAP.md").read_text()
+            self.assertIn("**Node0** (7)", text)
+            self.assertIn("### Core (4)", text)
+            self.assertIn("extract . --code-only", calls.read_text())
+            self.assertEqual(result["graph"], "refreshed")
+            self.commit_all("map")
+            self.assertEqual(workflow.docs(self.project)["graph"], "fresh")
+            (self.project / "a.py").write_text("x = 2\n"); self.commit_all("change")
+            self.assertEqual(workflow.docs(self.project)["graph"], "stale")
+            workflow.docs(self.project, refresh=True)
+            self.assertIn("update .", calls.read_text())
+            self.commit_all("map again")
+            self.assertEqual(workflow.docs(self.project)["graph"], "fresh")
+
+    def test_graph_legacy_directory_needs_explicit_migrate(self):
+        env, _ = self.fake_graphify()
+        legacy = self.project / "graphify-out"; legacy.mkdir()
+        (legacy / "GRAPH_REPORT.md").write_text("old")
+        (self.project / "a.py").write_text("x = 1\n"); self.commit_all("legacy")
+        with patch.dict(os.environ, env):
+            self.assertTrue(workflow.docs(self.project)["graph"].startswith("legacy"))
+            with self.assertRaises(ValueError):
+                workflow.docs(self.project, refresh=True)
+            self.assertFalse(legacy.is_symlink())
+            import graphmap
+            graphmap.build(self.project, migrate=True)
+            self.assertTrue(legacy.is_symlink())
+            self.assertEqual((legacy / "GRAPH_REPORT.md").read_text(), "old")
+            tracked = subprocess.run(["git", "-C", str(self.project), "ls-files", "graphify-out"],
+                                     capture_output=True, text=True).stdout
+            self.assertEqual(tracked, "")
+
+
+    def test_workspaces_group_under_a_project(self):
+        import graphmap
+        env, _ = self.fake_graphify()
+        self.assertEqual(graphmap.identity(self.project)["project"], "project-with-spaces")
+        other = self.base / "hercules_platform"; other.mkdir()
+        subprocess.run(["git", "init", "-q", str(other)], check=True)
+        with patch.dict(os.environ, env):
+            self.cli("workspace", "--project", str(self.project), "--of", "Hercules", "--name", "Herculean_plugin")
+            graphmap.set_identity(other, "hercules")
+            self.assertEqual(graphmap.identity(self.project),
+                             {"project": "hercules", "workspace": "herculean-plugin", "declared": True})
+            graphmap.build(other)
+            graphmap.build(self.project)
+            self.assertEqual(graphmap.store(self.project), self.base / "store/hercules/herculean-plugin")
+            text = (self.project / "docs/map/MAP.md").read_text()
+            self.assertIn("Project: **hercules** · workspace: **herculean-plugin** · other workspaces: hercules-platform", text)
+
 
 if __name__ == "__main__":
     unittest.main()
