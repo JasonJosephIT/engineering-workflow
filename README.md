@@ -53,6 +53,18 @@ active. Native Codex tools may have their own context management; do not add
 another proxy by default. TypeSafe's installed plugin supplies semantic AI APIs,
 not computer control. Keep it separate unless a project actually uses it.
 
+Graph overlay: `python3 -B workflow.py graph` builds or refreshes the code map
+`docs/map/MAP.md` with the global Graphify CLI (code-only, no LLM). The heavy graph stays in
+`~/.graphify/projects/<project>/<workspace>/`; `graphify-out/` becomes a gitignored symlink.
+Use `--migrate` once in a repository that still commits `graphify-out/`. Group workspaces
+under a project with `workflow.py workspace --of Hercules --name Herculean_plugin`.
+Hand the build and area naming to AO MiMo workers, one per workspace:
+`workflow.py graph --handoff herculean --handoff hercules-platform --spawn` (omit `--spawn` to preview).
+
+Add `--wool` for wool mode: completion verification (`ew-verification-before-completion`)
+and docs upkeep (`ew-docs-health`, glossary/ADR updates) become optional, run only
+when asked. Graphify stays mandatory. Integrity, Guard, TDD and review gates stay on.
+
 Add `--adhd` to load the vendored i-have-adhd ruleset (`ew-i-have-adhd`) at every
 session start. The same single startup hook injects it; only Claude has session
 evidence so far. Without the flag the skill

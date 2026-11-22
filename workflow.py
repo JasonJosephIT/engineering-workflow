@@ -60,7 +60,7 @@ def git(*args, cwd=None, timeout=20):
 
 
 def package_paths(root=ROOT):
-    for name in ("workflow.py", "reviews.py", "factory.py", "VERSION", "README.md", "SOURCES.md", "LICENSE"):
+    for name in ("workflow.py", "reviews.py", "factory.py", "graphmap.py", "VERSION", "README.md", "SOURCES.md", "LICENSE"):
         yield root / name
     for name in ("core", "adapters", "skills", "vendor"):
         for p in sorted((root / name).rglob("*")):
@@ -203,6 +203,11 @@ def merge_hooks(data, additions):
 
 OVERLAP = {"claude-guard", "headroom", "autopilot", "docs-health", "i-have-adhd"}
 ADHD_SKILL = "vendor/i-have-adhd/skills/i-have-adhd/SKILL.md"
+WOOL_RULES = ("WOOL MODE ACTIVE. ew-verification-before-completion and docs upkeep "
+              "(ew-docs-health, glossary/ADR updates) are optional: skip them unless the user asks. "
+              "Graphify stays mandatory: read the graph first and refresh it after integration. "
+              "Still report honestly what was and was not checked. "
+              "Install integrity, Guard and review gates are unchanged.")
 RETIRED = {"superpowers", "engineering", "claude-taskmaster", "entertainment", "runpod"}
 
 
@@ -333,7 +338,7 @@ def install(args):
         shutil.copy2(ROOT / "workflow.lock.json", stage / "workflow.lock.json")
         state = {"version": lock["version"], "release": lock["release"], "source_commit": git("rev-parse", "HEAD", cwd=ROOT),
                  "lock_sha256": digest((ROOT / "workflow.lock.json").read_bytes()), "repository": REPOSITORY,
-                 "platforms": platforms, "scope": args.scope, "headroom": args.headroom, "adhd": args.adhd,
+                 "platforms": platforms, "scope": args.scope, "headroom": args.headroom, "adhd": args.adhd, "wool": args.wool,
                  "hooks": "configured; live platform execution not verified"}
         (stage / "install.json").write_bytes(encoded(state))
         if runtime.exists():
@@ -390,16 +395,10 @@ def docs(project, refresh=False):
               "legacy_context_names": any((project / p).exists() for p in ("CONTEXT.md", "CONTEXT-MAP.md")),
               "adrs": len(list((project / "docs/adr").glob("*.md"))),
               "tracker_configured": (project / "docs/agents/issue-tracker.md").is_file()}
-    graph = project / "graphify-out/GRAPH_REPORT.md"
-    result["graph"] = "absent"
-    if graph.exists():
-        changed = git("log", "-1", "--format=%ct", "--", ".", ":(exclude)graphify-out", cwd=project)
-        result["graph"] = "stale" if changed and int(changed) > graph.stat().st_mtime else "present; freshness approximate"
+    import graphmap
+    result["graph"] = graphmap.status(project)
     if refresh:
-        if not graph.exists() or not shutil.which("graphify"):
-            raise ValueError("Graph refresh requires Graphify and an existing graph")
-        subprocess.run(["graphify", "update", "."], cwd=project, check=True, timeout=600)
-        result["graph"] = "refreshed; commit graphify-out/ with integration change"
+        result.update(graphmap.build(project))
     return result
 
 
@@ -418,6 +417,8 @@ def session(project, platform, expected=None, check_upstream=False):
               "selection": "project pin" if runtime == find_project(project) / ".engineering-workflow" else "user/package default",
               "hooks": "configuration is not live enforcement evidence; confirm in this platform",
               "docs": docs(project), "skill_count": len(lock["skills"])}
+    import graphmap
+    result["workspace"] = graphmap.identity(find_project(project))
     import reviews
     if (find_project(project) / reviews.PROJECT_FILE).is_file():
         configuration = reviews.read_project(project)
@@ -590,6 +591,13 @@ def hook(platform, data, event=None):
             rules = ("\n\nADHD MODE ACTIVE (always-on). The ruleset below applies to every response. "
                      '"stop adhd mode" turns it off for this session.\n\n' + rules)
             report["adhd"] = "always-on ruleset injected"
+        if state.get("wool"):
+            rules += ("\n\n" + WOOL_RULES)
+            report["wool"] = "verification and docs optional"
+        if report.get("docs", {}).get("graph") == "stale":
+            import graphmap
+            started = graphmap.refresh_in_background(project, runtime / "workflow.py")
+            if started: report["graph_refresh"] = started
         p = goal_path(project)
         if p.exists(): report["goal"] = read_json(p)
         return context_output(platform, event, json.dumps(report) + rules)
@@ -662,6 +670,7 @@ def main():
     i.add_argument("--project", default="."); i.add_argument("--home", default=str(Path.home()))
     i.add_argument("--headroom", action="store_true"); i.add_argument("--dry-run", action="store_true")
     i.add_argument("--adhd", action="store_true", help="Inject the vendored i-have-adhd ruleset at every session start")
+    i.add_argument("--wool", action="store_true", help="Wool mode: completion verification and docs upkeep become optional")
     i.add_argument("--expected")
     i.add_argument("--replace-overlap", action="store_true",
                    help="Disable selected duplicate/retired plugins and old Headroom startup/shell hooks")
@@ -670,6 +679,16 @@ def main():
         d.add_argument("--platform", choices=PLATFORMS, required=True)
         d.add_argument("--expected"); d.add_argument("--check-upstream", action="store_true")
     d = sub.add_parser("docs"); d.add_argument("--project", default="."); d.add_argument("--refresh", action="store_true")
+    gr = sub.add_parser("graph", help="Build/refresh the Graphify overlay (docs/map/MAP.md); heavy graph stays in a central store")
+    ws = sub.add_parser("workspace", help="Show or set which project this workspace belongs to")
+    ws.add_argument("--project", default="."); ws.add_argument("--of", metavar="PROJECT", help="Project name this workspace belongs to")
+    ws.add_argument("--name", help="Workspace name (default: folder name)")
+    gr.add_argument("--project", default="."); gr.add_argument("--migrate", action="store_true",
+                    help="Move a committed graphify-out/ to the central store first")
+    gr.add_argument("--handoff", metavar="AO_PROJECT", action="append",
+                    help="Brief an AO worker in this AO project to build and label the map (repeatable)")
+    gr.add_argument("--harness", default="mimo-code"); gr.add_argument("--spawn", action="store_true",
+                    help="With --handoff: actually start the AO workers (default prints the plan)")
     g = sub.add_parser("goal"); g.add_argument("action", choices=("set", "status", "pause", "resume", "complete", "blocked"))
     g.add_argument("objective", nargs="?"); g.add_argument("--project", default="."); g.add_argument("--evidence")
     h = sub.add_parser("hook"); h.add_argument("--platform", choices=PLATFORMS, required=True)
@@ -677,7 +696,7 @@ def main():
     a = p.parse_args()
     try:
         raw_hook = None
-        if a.command in ("session", "doctor", "docs", "goal", "hook", "project", "review", "factory"):
+        if a.command in ("session", "doctor", "docs", "graph", "workspace", "goal", "hook", "project", "review", "factory"):
             if a.command == "hook":
                 raw_hook = sys.stdin.read()
                 data = json.loads(raw_hook) if raw_hook.strip() else {}
@@ -704,6 +723,18 @@ def main():
         elif a.command == "install": install(a)
         elif a.command in ("session", "doctor"): print(json.dumps(session(a.project, a.platform, a.expected, a.check_upstream), indent=2))
         elif a.command == "docs": print(json.dumps(docs(a.project, a.refresh), indent=2))
+        elif a.command == "workspace":
+            import graphmap
+            root = find_project(a.project)
+            print(json.dumps(graphmap.set_identity(root, a.of, a.name) if a.of else graphmap.identity(root), indent=2))
+        elif a.command == "graph":
+            import graphmap
+            root = find_project(a.project)
+            if a.handoff:
+                print(json.dumps(graphmap.handoff(root, a.handoff, Path.home() / ".engineering-workflow/workflow.py",
+                                                  a.spawn, a.harness), indent=2))
+            else:
+                print(json.dumps(graphmap.build(root, a.migrate), indent=2))
         elif a.command == "goal": goal(a)
         elif a.command == "hook":
             print(json.dumps(hook(a.platform, data, event=a.event)))

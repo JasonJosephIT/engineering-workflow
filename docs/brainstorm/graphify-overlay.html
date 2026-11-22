@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Graphify Overlay</title>
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--mut:#66635c;--line:#e3dfd6;--card:#fff;--acc:#2f6f4e;--warn:#9a5b13;--bad:#9b2c2c;--code:#f1eee7}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#171715;--fg:#ecebe6;--mut:#a29f97;--line:#33312c;--card:#201f1c;--acc:#6cc497;--warn:#e0a458;--bad:#e07a7a;--code:#2a2925}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 system-ui,-apple-system,sans-serif}
+main{max-width:980px;margin:0 auto;padding:32px 16px 64px}
+h1{font-size:28px;margin:0 0 4px}h2{font-size:19px;margin:36px 0 10px}
+.sub{color:var(--mut);margin:0 0 24px}
+code{background:var(--code);padding:1px 5px;border-radius:4px;font-size:.9em}
+.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px}
+.card h3{margin:0 0 6px;font-size:16px}.card p{margin:6px 0}
+.rec{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc) inset}
+.tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:99px;border:1px solid currentColor;margin-left:6px}
+.good{color:var(--acc)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{border-bottom:1px solid var(--line);padding:7px 6px;text-align:left;vertical-align:top}
+th{color:var(--mut);font-weight:600}
+svg text{fill:var(--fg);font:13px system-ui,sans-serif}svg .m{fill:var(--mut)}
+svg rect{fill:var(--card);stroke:var(--line)}svg .hl{stroke:var(--acc);stroke-width:2}
+svg line,svg path{stroke:var(--mut);fill:none}
+.dec{display:grid;gap:12px}.dec label{display:block;font-weight:600;margin-bottom:4px}
+select,textarea{width:100%;font:inherit;padding:6px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--fg)}
+button{font:inherit;padding:8px 14px;border-radius:8px;border:1px solid var(--acc);background:var(--acc);color:#fff;cursor:pointer}
+.diagram{overflow-x:auto}
+</style></head><body><main>
+<h1>Graphify overlay</h1>
+<p class="sub">Every project gets graph-backed docs without copying the plugin or committing an 18 MB graph. Brainstorm, 2026-11-13.</p>
+
+<h2>Today vs proposed</h2>
+<table>
+<tr><th></th><th>Today</th><th>Proposed (option A)</th></tr>
+<tr><td>Who runs Graphify</td><td>You or the agent, by hand (<code>/graphify</code>)</td><td><code>workflow.py graph</code>, using the global CLI. No LLM.</td></tr>
+<tr><td>What's committed</td><td class="bad"><code>graphify-out/</code>: 229 files, ~18 MB</td><td class="good"><code>docs/map/</code>: ~50 KB of Markdown</td></tr>
+<tr><td>Heavy graph lives</td><td>In the repo</td><td><code>~/.graphify/projects/&lt;repo-id&gt;/</code></td></tr>
+<tr><td>Agent reads first</td><td><code>graphify-out/GRAPH_REPORT.md</code></td><td><code>docs/map/MAP.md</code></td></tr>
+<tr><td>Freshness</td><td class="warn">Stale since 2026-10-18 (manual step skipped)</td><td>Refreshed when SessionStart sees stale, and after every merge</td></tr>
+</table>
+
+<h2>How it flows</h2>
+<div class="diagram"><svg viewBox="0 0 900 200" width="100%" style="min-width:640px">
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10" style="fill:var(--mut);stroke:none"/></marker></defs>
+<rect x="10" y="70" width="150" height="60" rx="8"/><text x="85" y="96" text-anchor="middle">SessionStart</text><text x="85" y="114" text-anchor="middle" class="m">or after merge</text>
+<rect x="210" y="70" width="170" height="60" rx="8" class="hl"/><text x="295" y="96" text-anchor="middle">workflow.py graph</text><text x="295" y="114" text-anchor="middle" class="m">graphify update (code-only)</text>
+<rect x="440" y="10" width="220" height="60" rx="8"/><text x="550" y="36" text-anchor="middle">~/.graphify/projects/…</text><text x="550" y="54" text-anchor="middle" class="m">graph.json · cache · html (local)</text>
+<rect x="440" y="130" width="220" height="60" rx="8" class="hl"/><text x="550" y="156" text-anchor="middle">docs/map/MAP.md</text><text x="550" y="174" text-anchor="middle" class="m">committed overlay</text>
+<rect x="720" y="70" width="170" height="60" rx="8"/><text x="805" y="96" text-anchor="middle">Agents</text><text x="805" y="114" text-anchor="middle" class="m">local + cloud</text>
+<line x1="160" y1="100" x2="208" y2="100" marker-end="url(#a)"/>
+<path d="M380 90 L438 45" marker-end="url(#a)"/><path d="M380 110 L438 158" marker-end="url(#a)"/>
+<path d="M660 158 L718 112" marker-end="url(#a)"/><path d="M660 42 L718 88" stroke-dasharray="4 4" marker-end="url(#a)"/>
+</svg></div>
+<p class="sub">The dashed line means only local agents, via <code>graphify explain</code> or <code>graphify path</code>. Cloud agents read the committed overlay.</p>
+
+<h2>Overlay options</h2>
+<div class="grid">
+<div class="card rec"><h3>A. Thin overlay <span class="tag good">recommended</span></h3>
+<p>Commit only <code>docs/map/</code>. <code>MAP.md</code> lists the hubs and their files, god nodes, entry points, and the commit it was built from. Big communities get a short page each.</p>
+<p class="good">+ Small diffs. Works in the cloud. Easy to migrate.</p><p class="warn">− Cloud agents can't run path or explain queries.</p><p>About half a day.</p></div>
+<div class="card"><h3>B. A + inline marks</h3>
+<p>Also writes generated blocks into GLOSSARY.md and the ADRs, between <code>&lt;!-- graph:begin --&gt;</code> and <code>&lt;!-- graph:end --&gt;</code> markers. Each block lists which files a term or decision touches. Hand-written text isn't touched.</p>
+<p class="good">+ Docs and code stay linked.</p><p class="warn">− Generated text inside hand-written files. Only useful once a glossary exists.</p><p>About 2 more hours.</p></div>
+<div class="card"><h3>C. No repo files</h3>
+<p>Everything stays in the central store, and agents query it through the CLI.</p>
+<p class="bad">− Breaks cloud sessions and other agents. Not recommended.</p></div>
+</div>
+
+<h2>Migration per project</h2>
+<ol>
+<li>Move <code>graphify-out/</code> to the central store and add it to <code>.gitignore</code>.</li>
+<li>Run <code>workflow.py graph</code> and commit <code>docs/map/</code>.</li>
+<li>In WORKFLOW.md, change "read the graph first" to point at <code>docs/map/MAP.md</code>.</li>
+</ol>
+<p class="sub">A full <code>/graphify</code> run with docs, papers and images still works. It just writes to the central store, and the overlay picks up the result.</p>
+
+<h2>Your decisions</h2>
+<div class="dec card">
+<div><label for="d1">1. Stop committing graph.json, cache and html?</label><select id="d1"><option>Yes (recommended)</option><option>No, keep committing</option></select></div>
+<div><label for="d2">2. Overlay shape</label><select id="d2"><option>A. Thin overlay (recommended)</option><option>B. A + inline marks</option><option>C. No repo files</option></select></div>
+<div><label for="d3">3. Refresh when stale</label><select id="d3"><option>Auto at SessionStart (recommended)</option><option>Agent step only</option></select></div>
+<div><label for="n">Notes</label><textarea id="n" rows="3"></textarea></div>
+<div><button id="copy">Copy as markdown</button> <span id="ok" class="sub"></span></div>
+</div>
+<script>
+document.getElementById('copy').onclick=()=>{const v=id=>document.getElementById(id).value;
+const md=`## Graphify overlay decisions\n1. Stop committing heavy graph: ${v('d1')}\n2. Overlay: ${v('d2')}\n3. Refresh: ${v('d3')}\n\nNotes: ${v('n')||'-'}`;
+try{navigator.clipboard.writeText(md).then(()=>document.getElementById('ok').textContent='Copied.')}catch(e){prompt('Copy:',md)}};
+</script>
+</main></body></html>
