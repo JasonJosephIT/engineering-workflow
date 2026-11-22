@@ -2,7 +2,7 @@
 status: active
 progress: 100
 next_date: ""
-updated: 2026-11-19
+updated: 2026-11-22
 ---
 
 # STATUS
@@ -38,6 +38,7 @@ Review: `.scratch/factory-review/report.md` + `.html`.
    the `terminal read` and `terminal show` reply shapes on a real run.
 
 ## Decisions
+- 2026-11-22: Consolidation pass: merged 2 finished branches into main, saved uncommitted work on wip/*-2026-11-22 branches, refreshed the code graph and added/migrated GLOSSARY.md.
 
 - 2026-11-13: Graphify overlay (branch `feat/wool-mode`, not released). Graphify is mandatory and
   never copied per project: `workflow.py graph` builds code-only with the global CLI, keeps the heavy

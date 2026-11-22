@@ -1,0 +1,379 @@
+{
+  ".claude-plugin/marketplace.json": {
+    "mtime": 1795356253.9917352,
+    "seen": 1795357288.608088,
+    "ast_hash": "8ae141cfd8b23c5947194fa4b58085b7",
+    "semantic_hash": "8ae141cfd8b23c5947194fa4b58085b7",
+    "ast_empty": true
+  },
+  ".claude-plugin/plugin.json": {
+    "mtime": 1795356253.992019,
+    "seen": 1795357288.608099,
+    "ast_hash": "49c1b8c9511131380a64f3d6b4d9f512",
+    "semantic_hash": "49c1b8c9511131380a64f3d6b4d9f512",
+    "ast_empty": true
+  },
+  ".engineering-workflow-workspace.json": {
+    "mtime": 1795356288.697363,
+    "seen": 1795357288.608105,
+    "ast_hash": "2c505094f90c270b457e7cc73828ee44",
+    "semantic_hash": "2c505094f90c270b457e7cc73828ee44",
+    "ast_empty": true
+  },
+  ".github/workflows/check.yml": {
+    "mtime": 1795356253.9922035,
+    "seen": 1795357288.608107,
+    "ast_hash": "f28fe808c66d88b16a62347e9e4fad5d",
+    "semantic_hash": "f28fe808c66d88b16a62347e9e4fad5d"
+  },
+  "bin/ares-workflow.js": {
+    "mtime": 1795356253.9951534,
+    "seen": 1795357288.608285,
+    "ast_hash": "32cb3dc6fe565300dcebf3264717fbd2",
+    "semantic_hash": "32cb3dc6fe565300dcebf3264717fbd2"
+  },
+  "factory.py": {
+    "mtime": 1795356253.9963565,
+    "seen": 1795357288.608341,
+    "ast_hash": "9739a21b1543024309df6964aabde511",
+    "semantic_hash": "9739a21b1543024309df6964aabde511"
+  },
+  "graphmap.py": {
+    "mtime": 1795356254.1115737,
+    "seen": 1795357288.608382,
+    "ast_hash": "d845aad87be176a5da0dd95c70bd2201",
+    "semantic_hash": "d845aad87be176a5da0dd95c70bd2201"
+  },
+  "hooks/hooks.json": {
+    "mtime": 1795356253.9964616,
+    "seen": 1795357288.6084301,
+    "ast_hash": "285a887854b7ce33d3e62a037ced736b",
+    "semantic_hash": "285a887854b7ce33d3e62a037ced736b",
+    "ast_empty": true
+  },
+  "package.json": {
+    "mtime": 1795356254.111847,
+    "seen": 1795357288.608433,
+    "ast_hash": "ebc06809b78c00c95df0725e2da3037d",
+    "semantic_hash": "ebc06809b78c00c95df0725e2da3037d"
+  },
+  "reviews.py": {
+    "mtime": 1795356253.9966419,
+    "seen": 1795357288.608473,
+    "ast_hash": "0caf1741590abb6f0b397d005b2bdd19",
+    "semantic_hash": "0caf1741590abb6f0b397d005b2bdd19"
+  },
+  "skills/subagent-driven-development/scripts/review-package": {
+    "mtime": 1795356253.9987364,
+    "seen": 1795357288.608503,
+    "ast_hash": "21937c3ab7c74ed1d45e8bebb3b65cf6",
+    "semantic_hash": "21937c3ab7c74ed1d45e8bebb3b65cf6"
+  },
+  "skills/subagent-driven-development/scripts/sdd-workspace": {
+    "mtime": 1795356253.9988053,
+    "seen": 1795357288.608551,
+    "ast_hash": "7483badc0b32a85683180456ab8a6e32",
+    "semantic_hash": "7483badc0b32a85683180456ab8a6e32"
+  },
+  "skills/workflow-update/update.py": {
+    "mtime": 1795356253.999237,
+    "seen": 1795357288.608593,
+    "ast_hash": "d2aa5b84ba563afda301a06454257942",
+    "semantic_hash": "d2aa5b84ba563afda301a06454257942"
+  },
+  "tests/test_factory.py": {
+    "mtime": 1795356253.9995997,
+    "seen": 1795357288.608633,
+    "ast_hash": "3115b5db636139823d41a90d65097b5c",
+    "semantic_hash": "3115b5db636139823d41a90d65097b5c"
+  },
+  "tests/test_reviews.py": {
+    "mtime": 1795356253.9997163,
+    "seen": 1795357288.60867,
+    "ast_hash": "48f0a7aee1157a7af90cf8c31ea90efb",
+    "semantic_hash": "48f0a7aee1157a7af90cf8c31ea90efb"
+  },
+  "tests/test_workflow.py": {
+    "mtime": 1795356254.1122127,
+    "seen": 1795357288.608706,
+    "ast_hash": "ee4d07a06760d164f81f101074c9cfca",
+    "semantic_hash": "ee4d07a06760d164f81f101074c9cfca"
+  },
+  "vendor/claude-guard/command-guard.py": {
+    "mtime": 1795356254.0000932,
+    "seen": 1795357288.608746,
+    "ast_hash": "b281b7d9770fa43c197baab9eb49f8e0",
+    "semantic_hash": "b281b7d9770fa43c197baab9eb49f8e0"
+  },
+  "vendor/claude-guard/credential-scanner.py": {
+    "mtime": 1795356254.0001636,
+    "seen": 1795357288.608791,
+    "ast_hash": "a6bb9038409b0ea1838410135a601117",
+    "semantic_hash": "a6bb9038409b0ea1838410135a601117"
+  },
+  "vendor/claude-guard/guard/__init__.py": {
+    "mtime": 1795356254.0002785,
+    "seen": 1795357288.608831,
+    "ast_hash": "478316aada6aab95804e92f3cec3254d",
+    "semantic_hash": "478316aada6aab95804e92f3cec3254d"
+  },
+  "vendor/claude-guard/guard/classify.py": {
+    "mtime": 1795356254.0003743,
+    "seen": 1795357288.60888,
+    "ast_hash": "90f45927e14c32dde35a91ed6e6030f4",
+    "semantic_hash": "90f45927e14c32dde35a91ed6e6030f4"
+  },
+  "vendor/claude-guard/guard/explain.py": {
+    "mtime": 1795356254.0004451,
+    "seen": 1795357288.608923,
+    "ast_hash": "21a7705c2026b8a049d1abf305f73485",
+    "semantic_hash": "21a7705c2026b8a049d1abf305f73485"
+  },
+  "vendor/claude-guard/guard/normalize.py": {
+    "mtime": 1795356254.000518,
+    "seen": 1795357288.60897,
+    "ast_hash": "93c199f084badba27e1237464bcb74b4",
+    "semantic_hash": "93c199f084badba27e1237464bcb74b4"
+  },
+  "vendor/claude-guard/guard/packs/__init__.py": {
+    "mtime": 1795356254.0006363,
+    "seen": 1795357288.6090162,
+    "ast_hash": "13bf9b633997271bca21e49515960771",
+    "semantic_hash": "13bf9b633997271bca21e49515960771"
+  },
+  "vendor/claude-guard/guard/packs/cicd.py": {
+    "mtime": 1795356254.0007155,
+    "seen": 1795357288.60906,
+    "ast_hash": "24f3a7aa5bc6d3a30bf2ff8f724b9584",
+    "semantic_hash": "24f3a7aa5bc6d3a30bf2ff8f724b9584"
+  },
+  "vendor/claude-guard/guard/packs/cloud.py": {
+    "mtime": 1795356254.0007892,
+    "seen": 1795357288.609102,
+    "ast_hash": "f9a9014bd5f9385d8fd28854a0993f8f",
+    "semantic_hash": "f9a9014bd5f9385d8fd28854a0993f8f"
+  },
+  "vendor/claude-guard/guard/packs/core.py": {
+    "mtime": 1795356254.0008917,
+    "seen": 1795357288.609143,
+    "ast_hash": "bb77912720be1c55357702091d0c3daa",
+    "semantic_hash": "bb77912720be1c55357702091d0c3daa"
+  },
+  "vendor/claude-guard/guard/packs/credentials.py": {
+    "mtime": 1795356254.0009801,
+    "seen": 1795357288.609184,
+    "ast_hash": "2eb9ced3f03c8367b48971eb942bce84",
+    "semantic_hash": "2eb9ced3f03c8367b48971eb942bce84"
+  },
+  "vendor/claude-guard/guard/packs/dns.py": {
+    "mtime": 1795356254.0010452,
+    "seen": 1795357288.609225,
+    "ast_hash": "c4abdb135d4176991afb9702194fba0b",
+    "semantic_hash": "c4abdb135d4176991afb9702194fba0b"
+  },
+  "vendor/claude-guard/guard/packs/infra.py": {
+    "mtime": 1795356254.0011125,
+    "seen": 1795357288.609269,
+    "ast_hash": "c5af5fea1d7dc22770b5477686464452",
+    "semantic_hash": "c5af5fea1d7dc22770b5477686464452"
+  },
+  "vendor/claude-guard/guard/protocol.py": {
+    "mtime": 1795356254.0011823,
+    "seen": 1795357288.609316,
+    "ast_hash": "28357cbbf14ff1c9d5170dace2072db9",
+    "semantic_hash": "28357cbbf14ff1c9d5170dace2072db9"
+  },
+  "vendor/mattpocock/plugin.json": {
+    "mtime": 1795356254.001815,
+    "seen": 1795357288.609362,
+    "ast_hash": "509bf2c4d3f0ed39ce91d7d2d9389aaf",
+    "semantic_hash": "509bf2c4d3f0ed39ce91d7d2d9389aaf",
+    "ast_empty": true
+  },
+  "vendor/mattpocock/skills/engineering/ask-matt/agents/openai.yaml": {
+    "mtime": 1795356254.0022817,
+    "seen": 1795357288.609364,
+    "ast_hash": "d3bb94e3fa14e921edcc984fcc8ddbe7",
+    "semantic_hash": "d3bb94e3fa14e921edcc984fcc8ddbe7"
+  },
+  "vendor/mattpocock/skills/engineering/code-review/agents/openai.yaml": {
+    "mtime": 1795356254.0025203,
+    "seen": 1795357288.609468,
+    "ast_hash": "41726fb93a74bbeab2f643a27d6452d2",
+    "semantic_hash": "41726fb93a74bbeab2f643a27d6452d2"
+  },
+  "vendor/mattpocock/skills/engineering/codebase-design/agents/openai.yaml": {
+    "mtime": 1795356254.0029476,
+    "seen": 1795357288.6095319,
+    "ast_hash": "c27ba4232198f8b0318014a8c715cc01",
+    "semantic_hash": "c27ba4232198f8b0318014a8c715cc01"
+  },
+  "vendor/mattpocock/skills/engineering/diagnosing-bugs/agents/openai.yaml": {
+    "mtime": 1795356254.0032043,
+    "seen": 1795357288.609594,
+    "ast_hash": "52e474f87cddee193c6d9f0bca1fcdb4",
+    "semantic_hash": "52e474f87cddee193c6d9f0bca1fcdb4"
+  },
+  "vendor/mattpocock/skills/engineering/diagnosing-bugs/scripts/hitl-loop.template.sh": {
+    "mtime": 1795356254.0033307,
+    "seen": 1795357288.609652,
+    "ast_hash": "4e3e2b4d5dc8101655dd6ad33fb5ce41",
+    "semantic_hash": "4e3e2b4d5dc8101655dd6ad33fb5ce41"
+  },
+  "vendor/mattpocock/skills/engineering/domain-modeling/agents/openai.yaml": {
+    "mtime": 1795356254.003886,
+    "seen": 1795357288.609705,
+    "ast_hash": "e68374ca79182d08c013ce592a4b429c",
+    "semantic_hash": "e68374ca79182d08c013ce592a4b429c"
+  },
+  "vendor/mattpocock/skills/engineering/grill-with-docs/agents/openai.yaml": {
+    "mtime": 1795356254.0043206,
+    "seen": 1795357288.609758,
+    "ast_hash": "d50e6a6a53801a48192dde963945affc",
+    "semantic_hash": "d50e6a6a53801a48192dde963945affc"
+  },
+  "vendor/mattpocock/skills/engineering/implement-spec/agents/openai.yaml": {
+    "mtime": 1795356254.0053809,
+    "seen": 1795357288.609819,
+    "ast_hash": "35f602adf7b8fb90506af82b90e96a62",
+    "semantic_hash": "35f602adf7b8fb90506af82b90e96a62"
+  },
+  "vendor/mattpocock/skills/engineering/implement/agents/openai.yaml": {
+    "mtime": 1795356254.0056634,
+    "seen": 1795357288.609876,
+    "ast_hash": "67981219ee02544ca054221195e85d41",
+    "semantic_hash": "67981219ee02544ca054221195e85d41"
+  },
+  "vendor/mattpocock/skills/engineering/improve-codebase-architecture/agents/openai.yaml": {
+    "mtime": 1795356254.0060616,
+    "seen": 1795357288.609934,
+    "ast_hash": "e73ee28ebe885ee90bec6f34554efdd1",
+    "semantic_hash": "e73ee28ebe885ee90bec6f34554efdd1"
+  },
+  "vendor/mattpocock/skills/engineering/pr/agents/openai.yaml": {
+    "mtime": 1795356254.0063562,
+    "seen": 1795357288.609996,
+    "ast_hash": "5d53ced569cac67543caad14f27cb3c7",
+    "semantic_hash": "5d53ced569cac67543caad14f27cb3c7"
+  },
+  "vendor/mattpocock/skills/engineering/prototype/agents/openai.yaml": {
+    "mtime": 1795356254.0069237,
+    "seen": 1795357288.610056,
+    "ast_hash": "f52e5df8465a544537396ffa1d2a11a4",
+    "semantic_hash": "f52e5df8465a544537396ffa1d2a11a4"
+  },
+  "vendor/mattpocock/skills/engineering/research/agents/openai.yaml": {
+    "mtime": 1795356254.0071428,
+    "seen": 1795357288.6101172,
+    "ast_hash": "ea8c2769bf46410cc6b302b291bb7b9d",
+    "semantic_hash": "ea8c2769bf46410cc6b302b291bb7b9d"
+  },
+  "vendor/mattpocock/skills/engineering/retro/agents/openai.yaml": {
+    "mtime": 1795356254.0073688,
+    "seen": 1795357288.610187,
+    "ast_hash": "0ba0bed65c58b66add3748519ada28a3",
+    "semantic_hash": "0ba0bed65c58b66add3748519ada28a3"
+  },
+  "vendor/mattpocock/skills/engineering/setup-matt-pocock-skills/agents/openai.yaml": {
+    "mtime": 1795356254.0077178,
+    "seen": 1795357288.610249,
+    "ast_hash": "a9d2c63bccc70831e36cc011557a6b38",
+    "semantic_hash": "a9d2c63bccc70831e36cc011557a6b38"
+  },
+  "vendor/mattpocock/skills/engineering/tdd/agents/openai.yaml": {
+    "mtime": 1795356254.0084357,
+    "seen": 1795357288.6102998,
+    "ast_hash": "e37e499fa0b017cde536bacb0ebaae67",
+    "semantic_hash": "e37e499fa0b017cde536bacb0ebaae67"
+  },
+  "vendor/mattpocock/skills/engineering/to-spec/agents/openai.yaml": {
+    "mtime": 1795356254.0087962,
+    "seen": 1795357288.610359,
+    "ast_hash": "886d06b1f83b51e39bd2874b75730f87",
+    "semantic_hash": "886d06b1f83b51e39bd2874b75730f87"
+  },
+  "vendor/mattpocock/skills/engineering/to-tickets/agents/openai.yaml": {
+    "mtime": 1795356254.0090382,
+    "seen": 1795357288.61042,
+    "ast_hash": "6c4d19c426617a41441e84aacf2786d6",
+    "semantic_hash": "6c4d19c426617a41441e84aacf2786d6"
+  },
+  "vendor/mattpocock/skills/engineering/triage/agents/openai.yaml": {
+    "mtime": 1795356254.009477,
+    "seen": 1795357288.610476,
+    "ast_hash": "fc03336314c293aa703724167625f4b1",
+    "semantic_hash": "fc03336314c293aa703724167625f4b1"
+  },
+  "vendor/mattpocock/skills/engineering/wayfinder/agents/openai.yaml": {
+    "mtime": 1795356254.0097382,
+    "seen": 1795357288.610535,
+    "ast_hash": "05e37f0188c1e7d2f1cdf4143c0a5c75",
+    "semantic_hash": "05e37f0188c1e7d2f1cdf4143c0a5c75"
+  },
+  "vendor/mattpocock/skills/engineering/wizard/agents/openai.yaml": {
+    "mtime": 1795356254.0099664,
+    "seen": 1795357288.610591,
+    "ast_hash": "d613906658820c197488b4a616ce773d",
+    "semantic_hash": "d613906658820c197488b4a616ce773d"
+  },
+  "vendor/mattpocock/skills/engineering/wizard/template.sh": {
+    "mtime": 1795356254.0100565,
+    "seen": 1795357288.6106482,
+    "ast_hash": "1053ead340576aa5e2221be01724f119",
+    "semantic_hash": "1053ead340576aa5e2221be01724f119"
+  },
+  "vendor/mattpocock/skills/productivity/grill-me/agents/openai.yaml": {
+    "mtime": 1795356254.0103166,
+    "seen": 1795357288.610707,
+    "ast_hash": "aff7b6f7b10220e3b4537c42a2d08917",
+    "semantic_hash": "aff7b6f7b10220e3b4537c42a2d08917"
+  },
+  "vendor/mattpocock/skills/productivity/grilling/agents/openai.yaml": {
+    "mtime": 1795356254.0105205,
+    "seen": 1795357288.610762,
+    "ast_hash": "d419e97c73f1073f678e284cfdd904dc",
+    "semantic_hash": "d419e97c73f1073f678e284cfdd904dc"
+  },
+  "vendor/mattpocock/skills/productivity/handoff/agents/openai.yaml": {
+    "mtime": 1795356254.0107343,
+    "seen": 1795357288.610816,
+    "ast_hash": "4be8ae2848843907cb2c73c3abed107c",
+    "semantic_hash": "4be8ae2848843907cb2c73c3abed107c"
+  },
+  "vendor/mattpocock/skills/productivity/teach/agents/openai.yaml": {
+    "mtime": 1795356254.011219,
+    "seen": 1795357288.610868,
+    "ast_hash": "9728d722d80350f8a1e6f96fdcbf8db5",
+    "semantic_hash": "9728d722d80350f8a1e6f96fdcbf8db5"
+  },
+  "vendor/mattpocock/skills/productivity/to-questionnaire/agents/openai.yaml": {
+    "mtime": 1795356254.0114279,
+    "seen": 1795357288.610919,
+    "ast_hash": "f9bb141c3ec013fc2ac4197a93f2ce3f",
+    "semantic_hash": "f9bb141c3ec013fc2ac4197a93f2ce3f"
+  },
+  "vendor/mattpocock/skills/productivity/wait-what/agents/openai.yaml": {
+    "mtime": 1795356254.0116277,
+    "seen": 1795357288.610971,
+    "ast_hash": "bd652fbd4d7a04e91c5c0a35791c6259",
+    "semantic_hash": "bd652fbd4d7a04e91c5c0a35791c6259"
+  },
+  "vendor/mattpocock/skills/productivity/writing-for-agents/agents/openai.yaml": {
+    "mtime": 1795356254.011917,
+    "seen": 1795357288.6110232,
+    "ast_hash": "1ec4866a3ad2fba3e9a44c6db860efd7",
+    "semantic_hash": "1ec4866a3ad2fba3e9a44c6db860efd7"
+  },
+  "workflow.lock.json": {
+    "mtime": 1795356254.1125371,
+    "seen": 1795357288.611076,
+    "ast_hash": "26a00fbcdcc78b8ec951e15aa3d54224",
+    "semantic_hash": "26a00fbcdcc78b8ec951e15aa3d54224"
+  },
+  "workflow.py": {
+    "mtime": 1795356254.1129162,
+    "seen": 1795357288.611107,
+    "ast_hash": "c32f4f0d31f931d797720da27f4950b5",
+    "semantic_hash": "c32f4f0d31f931d797720da27f4950b5"
+  }
+}
