@@ -38,6 +38,7 @@ Review: `.scratch/factory-review/report.md` + `.html`.
    the `terminal read` and `terminal show` reply shapes on a real run.
 
 ## Decisions
+- 2026-11-22: consolidated leftover branches via consolidate/2026-11-22, reviewed by Fable. Merged `feature/linux-systemd-heartbeat` (AO runner heartbeat: systemd user timer on Linux; unreleased, tests 179/179); skipped `claude/npm-package-check-cf8fd4` (one stale 2026-11-10 STATUS note about publishing npm 0.5.0, superseded by v0.9.1).
 - 2026-11-22: Consolidation pass: merged 2 finished branches into main, saved uncommitted work on wip/*-2026-11-22 branches, refreshed the code graph and added/migrated GLOSSARY.md.
 
 - 2026-11-13: Graphify overlay (branch `feat/wool-mode`, not released). Graphify is mandatory and
